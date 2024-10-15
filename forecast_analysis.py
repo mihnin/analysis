@@ -2,10 +2,34 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import plotly.express as px
+from typing import Tuple, List
 
-def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column, 
-                          start_balance_column, end_balance_column, recommendation_column, 
-                          future_demand_column, safety_stock_column):
+def analyze_forecast_data(df: pd.DataFrame, date_column: str, material_column: str, branch_column: str, 
+                          demand_column: str, start_balance_column: str, end_balance_column: str, 
+                          recommendation_column: str, future_demand_column: str, 
+                          safety_stock_column: str) -> Tuple[pd.DataFrame, str]:
+    """
+    Анализирует прогнозные данные и возвращает результаты анализа.
+
+    :param df: DataFrame с прогнозными данными
+    :param date_column: Название столбца с датами
+    :param material_column: Название столбца с материалами
+    :param branch_column: Название столбца с филиалами
+    :param demand_column: Название столбца с прогнозируемой потребностью
+    :param start_balance_column: Название столбца с начальным балансом
+    :param end_balance_column: Название столбца с конечным балансом
+    :param recommendation_column: Название столбца с рекомендациями по закупке
+    :param future_demand_column: Название столбца с будущим спросом
+    :param safety_stock_column: Название столбца со страховым запасом
+    :return: Tuple с DataFrame результатов анализа и строкой объяснения
+    """
+    required_columns = [date_column, material_column, branch_column, demand_column, 
+                        start_balance_column, end_balance_column, recommendation_column, 
+                        future_demand_column, safety_stock_column]
+    
+    if not all(column in df.columns for column in required_columns):
+        raise ValueError("Не все необходимые столбцы присутствуют в DataFrame")
+
     analysis_df = df.copy()
     numeric_columns = [demand_column, start_balance_column, end_balance_column, 
                        recommendation_column, future_demand_column, safety_stock_column]
@@ -17,8 +41,11 @@ def analyze_forecast_data(df, date_column, material_column, branch_column, deman
         for branch in analysis_df[branch_column].unique():
             material_branch_data = analysis_df[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch)]
             if len(material_branch_data) > 2:
-                model = ExponentialSmoothing(material_branch_data[demand_column], trend='add', seasonal=None).fit()
-                analysis_df.loc[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch), demand_column] = model.fittedvalues.round(1)
+                try:
+                    model = ExponentialSmoothing(material_branch_data[demand_column], trend='add', seasonal=None).fit()
+                    analysis_df.loc[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch), demand_column] = model.fittedvalues.round(1)
+                except Exception as e:
+                    print(f"Ошибка при расчете ExponentialSmoothing для материала {material} в филиале {branch}: {str(e)}")
     
     explanation = get_explanation(analysis_df.iloc[0], date_column, material_column, branch_column, 
                                   demand_column, start_balance_column, end_balance_column, 
