@@ -184,6 +184,12 @@ def main():
                     )
                     st.session_state.forecast_df = pd.concat([st.session_state.forecast_df, recommendations_df], axis=1)
                     
+                    # Фильтрация данных по выбранным материалам и филиалам перед анализом
+                    if selected_forecast_materials:
+                        st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_material_column].isin(selected_forecast_materials)]
+                    if selected_forecast_branches:
+                        st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_branch_column].isin(selected_forecast_branches)]
+
                     analysis_df, explanation = fa.analyze_forecast_data(
                         st.session_state.forecast_df,
                         forecast_date_column,
