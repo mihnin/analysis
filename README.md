@@ -155,3 +155,36 @@
 - Повышение оборачиваемости капитала.
 - Улучшение качества обслуживания клиентов за счет наличия нужных материалов.
 - Более эффективное использование складских помещений.
+
+## Установка
+
+Рекомендуется использовать `conda` для управления зависимостями и создания изолированной среды. Следуйте этим шагам для настройки проекта:
+
+1. Установите [Anaconda](https://www.anaconda.com/products/distribution) или [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
+
+2. Клонируйте репозиторий:
+    ```sh
+    git clone https://github.com/mihnin/analysis.git
+    ```
+
+3. Перейдите в директорию проекта:
+    ```sh
+    cd analysis
+    ```
+
+4. Создайте и активируйте новую среду:
+    ```sh
+    conda create --name analysis python=3.12 -y
+    conda activate analysis
+    ```
+
+5. Установите зависимости:
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+## Использование
+
+1. Запустите приложение Streamlit:
+    ```sh
+    streamlit run app.py
