@@ -16,12 +16,14 @@
 
 ### Скриншоты исторических данных
 
-![Скриншот 1](images/1.png)
-![Скриншот 2](images/2.png)
-![Скриншот 3](images/3.png)
-![Скриншот 4](images/4.png)
-![Скриншот 5](images/5.png)
-![Скриншот 6](images/6.png)
+<div style="width: 100%; overflow: hidden;">
+  <img src="images/1.png" style="width: 100%; display: block;">
+  <img src="images/2.png" style="width: 100%; display: block;">
+  <img src="images/3.png" style="width: 100%; display: block;">
+  <img src="images/4.png" style="width: 100%; display: block;">
+  <img src="images/5.png" style="width: 100%; display: block;">
+  <img src="images/6.png" style="width: 100%; display: block;">
+</div>
 
 #### Пояснение расчетов на примере материала MAT-001 в филиале Филиал 1:
 
@@ -91,10 +93,12 @@
 
 ### Скриншоты прогнозных значений
 
-![Скриншот 7](images/21.png)
-![Скриншот 8](images/22.png)
-![Скриншот 9](images/23.png)
-![Скриншот 10](images/24.png)
+<div style="width: 100%; overflow: hidden;">
+  <img src="images/21.png" style="width: 100%; display: block;">
+  <img src="images/22.png" style="width: 100%; display: block;">
+  <img src="images/23.png" style="width: 100%; display: block;">
+  <img src="images/24.png" style="width: 100%; display: block;">
+</div>
 
 #### Пояснение расчетов на примере:
 
