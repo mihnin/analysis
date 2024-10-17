@@ -2,34 +2,10 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import plotly.express as px
-from typing import Tuple, List
 
-def analyze_forecast_data(df: pd.DataFrame, date_column: str, material_column: str, branch_column: str, 
-                          demand_column: str, start_balance_column: str, end_balance_column: str, 
-                          recommendation_column: str, future_demand_column: str, 
-                          safety_stock_column: str) -> Tuple[pd.DataFrame, str]:
-    """
-    Анализирует прогнозные данные и возвращает результаты анализа.
-
-    :param df: DataFrame с прогнозными данными
-    :param date_column: Название столбца с датами
-    :param material_column: Название столбца с материалами
-    :param branch_column: Название столбца с филиалами
-    :param demand_column: Название столбца с прогнозируемой потребностью
-    :param start_balance_column: Название столбца с начальным балансом
-    :param end_balance_column: Название столбца с конечным балансом
-    :param recommendation_column: Название столбца с рекомендациями по закупке
-    :param future_demand_column: Название столбца с будущим спросом
-    :param safety_stock_column: Название столбца со страховым запасом
-    :return: Tuple с DataFrame результатов анализа и строкой объяснения
-    """
-    required_columns = [date_column, material_column, branch_column, demand_column, 
-                        start_balance_column, end_balance_column, recommendation_column, 
-                        future_demand_column, safety_stock_column]
-    
-    if not all(column in df.columns for column in required_columns):
-        raise ValueError("Не все необходимые столбцы присутствуют в DataFrame")
-
+def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column, 
+                          start_balance_column, end_balance_column, recommendation_column, 
+                          future_demand_column, safety_stock_column):
     analysis_df = df.copy()
     numeric_columns = [demand_column, start_balance_column, end_balance_column, 
                        recommendation_column, future_demand_column, safety_stock_column]
@@ -41,11 +17,8 @@ def analyze_forecast_data(df: pd.DataFrame, date_column: str, material_column: s
         for branch in analysis_df[branch_column].unique():
             material_branch_data = analysis_df[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch)]
             if len(material_branch_data) > 2:
-                try:
-                    model = ExponentialSmoothing(material_branch_data[demand_column], trend='add', seasonal=None).fit()
-                    analysis_df.loc[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch), demand_column] = model.fittedvalues.round(1)
-                except Exception as e:
-                    print(f"Ошибка при расчете ExponentialSmoothing для материала {material} в филиале {branch}: {str(e)}")
+                model = ExponentialSmoothing(material_branch_data[demand_column], trend='add', seasonal=None).fit()
+                analysis_df.loc[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch), demand_column] = model.fittedvalues.round(1)
     
     explanation = get_explanation(analysis_df.iloc[0], date_column, material_column, branch_column, 
                                   demand_column, start_balance_column, end_balance_column, 
@@ -61,20 +34,20 @@ def get_explanation(row, date_column, material_column, branch_column, demand_col
     
     Рассмотрим строку для {row[material_column]} в {row[branch_column]} на дату {row[date_column]}:
 
-    1. **Прогнозируемая потребность**: {row[demand_column]}
-       - Это значение берется напрямую из загруженных прогнозных данных или рассчитывается с использованием модели Exponential Smoothing.
-       - Модель Exponential Smoothing помогает предсказать, сколько материала потребуется, учитывая прошлое использование и тренды.
+    1. **Запланированная потребность**: {row[demand_column]}
+       - Это значение берется напрямую из загруженных исходных данных.
        - Что делать: Используйте это значение для планирования закупок на указанную дату, чтобы избежать нехватки материала.
 
     2. **Прогноз остатка на начало**: {row[start_balance_column]}
-       - Рассчитывается на основе исторических данных или предыдущего прогноза.
+       - Рассчитывается на основе исторических данных, предыдущего прогноза или с использованием модели Exponential Smoothing.
+       - Модель Exponential Smoothing помогает предсказать, сколько материала останется, учитывая прошлое использование и тренды.
        - Представляет ожидаемый остаток {row[material_column]} в {row[branch_column]} на начало дня {row[date_column]}.
-       - Что делать: Сравните этот остаток с прогнозируемой потребностью, чтобы понять, достаточно ли материала.
+       - Что делать: Сравните этот остаток с запланированной потребностью, чтобы понять, достаточно ли материала.
 
     3. **Прогноз остатка на конец**: {row[end_balance_column]}
-       - Вычисляется как: Прогноз остатка на начало - Прогнозируемая потребность
+       - Вычисляется как: Прогноз остатка на начало - Запланированная потребность
        - {row[start_balance_column]} - {row[demand_column]} = {row[end_balance_column]}
-       - Это ожидаемый остаток {row[material_column]} в {row[branch_column]} в конце дня {row[date_column]} после удовлетворения прогнозируемой потребности.
+       - Это ожидаемый остаток {row[material_column]} в {row[branch_column]} в конце дня {row[date_column]} после удовлетворения запланированной потребности.
        - Что делать: Если прогноз остатка на конец слишком мал, подумайте о дополнительных закупках, чтобы избежать нехватки.
 
     4. **Рекомендация по закупке**: {row[recommendation_column]}
@@ -84,7 +57,7 @@ def get_explanation(row, date_column, material_column, branch_column, demand_col
        - Что делать: Если значение больше 0, необходимо заказать дополнительное количество материала, чтобы покрыть будущий спрос и избежать нехватки.
 
     5. **Будущий спрос**: {row[future_demand_column]}
-       - Сумма прогнозируемых потребностей за текущий и два следующих периода.
+       - Сумма запланированных потребностей за текущий и два следующих периода.
        - Представьте, что вы управляете складом строительных материалов. Будущий спрос — это то, сколько материала вам понадобится в ближайшее время.
        
        Как это работает:
@@ -103,7 +76,7 @@ def get_explanation(row, date_column, material_column, branch_column, demand_col
        - Регулярно сравнивайте фактический спрос с прогнозируемым, чтобы улучшать точность прогнозов.
 
     6. **Страховой запас**: {row[safety_stock_column]}
-       - Рассчитывается как процент от прогнозируемой потребности.
+       - Рассчитывается как процент от запланированной потребности.
        - Помогает обеспечить наличие достаточного количества материала в случае непредвиденных обстоятельств.
        - Что делать: Держите достаточный страховой запас, чтобы избежать перебоев в поставках при внезапном увеличении спроса.
 
@@ -140,7 +113,7 @@ def analyze_coverage(df, start_quantity_column, forecast_quantity_column):
     coverage_ratio = total_inventory / total_demand
     
     if coverage_ratio >= 1:
-        return f"Текущие запасы покрывают {coverage_ratio:.2f} от прогнозируемой потребности."
+        return f"Текущие запасы покрывают {coverage_ratio:.2f} от запланированной потребности."
     else:
         shortage = total_demand - total_inventory
         return f"Текущих запасов недостаточно. Нехватка составляет {shortage:.0f} единиц."

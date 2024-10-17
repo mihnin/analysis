@@ -12,8 +12,11 @@ import xlsxwriter  # Добавьте эту строку
 import historical_analysis as ha
 import forecast_analysis as fa
 import utils
-import config  # Импортируем модуль конфигурации
-import psycopg2
+from logging_config import setup_logger, log_user_action, create_private_download_button
+
+# Инициализация логирования
+logger = setup_logger()
+st.session_state['logger'] = logger
 
 st.set_page_config(page_title="Анализ и прогнозирование управления запасами", layout="wide")
 
@@ -31,30 +34,11 @@ def to_excel(df):
     # Записываем данные
     for row_num, row in enumerate(df.values):
         for col_num, value in enumerate(row):
-            if isinstance(value, str):
-                worksheet.write(row_num + 1, col_num, value)
-            else:
-                worksheet.write(row_num + 1, col_num, value)
+            worksheet.write(row_num + 1, col_num, value.encode('utf-8').decode('utf-8') if isinstance(value, str) else value)
 
     workbook.close()
-    output.seek(0)
-    return output
-
-def load_historical_data_to_db(data):
-    conn = config.connect_to_db()
-    if conn is None:
-        return
-
-    try:
-        cursor = conn.cursor()
-        # Ваш код для загрузки данных в базу данных
-        cursor.close()
-        conn.commit()
-    except Exception as e:
-        st.error(f"Произошла ошибка при загрузке исторических данных в базу данных: {str(e)}")
-    finally:
-        if conn is not None:
-            conn.close()
+    processed_data = output.getvalue()
+    return processed_data
 
 def main():
     st.title("Анализ и прогнозирование управления запасами")
@@ -65,17 +49,21 @@ def main():
     if 'forecast_df' not in st.session_state:
         st.session_state.forecast_df = None
 
-    # Подключение к базе данных
-    conn = config.connect_to_db()
-
     # Загрузка исторических данных
     st.header("Загрузка исторических данных")
     historical_file = st.file_uploader("Выберите Excel файл с историческими данными", type=["xlsx"], key="historical_uploader")
 
+    if historical_file is not None and st.session_state.get("historical_df") is None:
+        st.session_state.historical_df = pd.read_excel(historical_file)
+        log_user_action(
+            action="Загрузка исторических данных",
+            message=f"Загружен файл {historical_file.name}. Количество строк: {st.session_state.historical_df.shape[0]}."
+        )
+    
     if historical_file is not None:
         st.session_state.historical_df = pd.read_excel(historical_file)
         st.success("Файл с историческими данными успешно загружен!")
-
+        
     if st.session_state.historical_df is not None:
         st.write("Первые несколько строк загруженных исторических данных:")
         st.write(st.session_state.historical_df.head())
@@ -153,23 +141,17 @@ def main():
                 
                 st.subheader("Пояснение расчеов")
                 st.write(explanation)
+                
+                log_user_action(
+                    action="Анализ исторических данных",
+                    message=f"Нажата кнопка 'Провести анализ исторических данных'. Анализ исторических данных успешно выполнен. Использован файл {historical_file.name}. Количество строк: {st.session_state.historical_df.shape[0]}."
+                )
             except Exception as e:
                 st.error(f"Произошла ошибка при анализе исторических данных: {str(e)}")
-
-        # Добавление кнопки для загрузки исторических данных в базу данных
-        if st.button("Загрузить исторические данные в базу данных"):
-            load_historical_data_to_db(st.session_state.historical_df)
-
-        # Добавление кнопки для вывода исторических данных из базы данных
-        if st.button("Вывести исторические данные из базы данных"):
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT * FROM historical_data")
-                historical_data_from_db = cursor.fetchall()
-                st.dataframe(historical_data_from_db)
-                st.success("Исторические данные успешно выведены из базы данных!")
-            except Exception as e:
-                st.error(f"Произошла ошибка при выводе исторических данных из базы данных: {str(e)}")
+                log_user_action(
+                    action="Анализ исторических данных",
+                    message=f"Произошла ошибка при анализе исторических данных: {str(e)}"
+                )
 
     # Добавим ввод страхового запаса
     safety_stock_percent = st.slider("Выберите процент страхового запаса", 0, 100, 20, 5)
@@ -179,6 +161,13 @@ def main():
     st.header("Загрузка прогнозируемых данных")
     forecast_file = st.file_uploader("Выберите Excel фай с прогнозируемыми данными", type=["xlsx"], key="forecast_uploader")
 
+    if forecast_file is not None and st.session_state.get("forecast_df") is None:
+        st.session_state.forecast_df = pd.read_excel(forecast_file)
+        log_user_action(
+            action="Загрузка прогнозируемых данных",
+            message=f"Загружен файл {forecast_file.name}. Количество строк: {st.session_state.forecast_df.shape[0]}."
+        )
+        
     if forecast_file is not None:
         st.session_state.forecast_df = pd.read_excel(forecast_file)
         st.success("Файл с прогнозируемыми данными успешно загружен!")
@@ -191,7 +180,7 @@ def main():
         forecast_date_column = st.selectbox("Выберите поле с датой прогноза", st.session_state.forecast_df.columns)
         forecast_branch_column = st.selectbox("Выберите поле с номером филиала (прогноз)", st.session_state.forecast_df.columns)
         forecast_material_column = st.selectbox("Выберите поле с наименованием материала (прогноз)", st.session_state.forecast_df.columns)
-        forecast_quantity_column = st.selectbox("Выберите поле с прогнозируемой потребностью", st.session_state.forecast_df.columns)
+        forecast_quantity_column = st.selectbox("Выберите поле с запланированной потребностью", st.session_state.forecast_df.columns)
 
         # Выбор конкретных значений признаков для прогноза
         selected_forecast_materials = st.multiselect("Выберите материалы для прогноза", st.session_state.forecast_df[forecast_material_column].unique())
@@ -199,11 +188,11 @@ def main():
 
         # Фильтрация прогнозных данных по выбранным значениям
         if selected_forecast_materials:
-            st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_material_column].isin(selected_forecast_materials)]
+            st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_material_column].isin(selected_forecast_materials)].reset_index(drop=True)
         if selected_forecast_branches:
-            st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_branch_column].isin(selected_forecast_branches)]
+            st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_branch_column].isin(selected_forecast_branches)].reset_index(drop=True)
 
-        # Анализ прогнозируемых данных
+        # нализ прогнозируемых данных
         if st.button("Провести анализ прогнозируемых данных"):
             try:
                 if st.session_state.historical_df is None:
@@ -222,17 +211,52 @@ def main():
                         st.session_state.forecast_df, 'Прогноз остатка на конец', forecast_quantity_column, safety_stock_percent
                     )
                     st.session_state.forecast_df = pd.concat([st.session_state.forecast_df, recommendations_df], axis=1)
+                    
+                    analysis_df, explanation = fa.analyze_forecast_data(
+                        st.session_state.forecast_df,
+                        forecast_date_column,
+                        forecast_material_column,
+                        forecast_branch_column,
+                        forecast_quantity_column,
+                        'Прогноз остатка на начало',
+                        'Прогноз остатка на конец',
+                        'Рекомендация по закупке',
+                        'Будущий спрос',
+                        'Страховой запас'
+                    )
+                    st.subheader("Прогноз остатков и рекомендации по закупкам:")
+                    st.dataframe(analysis_df)
+                    st.subheader("Пояснение расчетов")
+                    st.write(explanation)
+                    
+                    # Кнопка для скачивания
+                    excel_file = utils.to_excel(analysis_df)
+                    st.download_button(
+                        label="Скачать таблицу как Excel файл",
+                        data=excel_file,
+                        file_name="forecast_and_recommendations.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
-                    # Фильтрация данных по выбранным материалам и филиалам перед анализом
-                    if selected_forecast_materials:
-                        st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_material_column].isin(selected_forecast_materials)]
-                    if selected_forecast_branches:
-                        st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_branch_column].isin(selected_forecast_branches)]
+                    # Визуализация прогноза
+                    forecast_fig = vis.plot_forecast_analysis(analysis_df, forecast_date_column, 
+                                                              forecast_material_column, 
+                                                              'Прогноз остатка на конец', 'Рекомендация по закупке')
+                    st.plotly_chart(forecast_fig)
+                    
+                    log_user_action(
+                        action="Анализ прогнозируемых данных",
+                        message=f"Нажата кнопка 'Провести анализ прогнозируемых данных'. Анализ прогнозируемых данных успешно выполнен. Использован файл {forecast_file.name}. Количество строк: {st.session_state.forecast_df.shape[0]}."
+                    )
             except Exception as e:
-                st.error(f"Произошла ошибка: {str(e)}")
-            finally:
-                # Любой код, который должен быть выполнен в любом случае
-                pass
+                st.error(f"Произошла ошибка ри анализе прогнозируемых данных: {str(e)}")
+                log_user_action(
+                    action="Анализ прогнозируемых данных",
+                    message=f"Произошла ошибка ри анализе прогнозируемых данных: {str(e)}"
+                )
+                
+    # Кнопка для скачивания лог-файла
+    create_private_download_button()
 
 if __name__ == "__main__":
     main()

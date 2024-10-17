@@ -3,18 +3,7 @@ import streamlit as st
 import config
 
 def get_db_connection():
-    try:
-        connection = psycopg2.connect(
-            dbname="your_db_name",
-            user="your_user",
-            password="your_db_password",
-            host="192.168.50.241",
-            port=5432
-        )
-        return connection
-    except Exception as e:
-        st.error(f"Произошла ошибка при подключении к базе данных: {str(e)}")
-        return None
+    return config.connect_to_db()
 
 def load_historical_data_to_db(data):
     connection = get_db_connection()
