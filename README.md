@@ -159,3 +159,70 @@
 - Повышение оборачиваемости капитала.
 - Улучшение качества обслуживания клиентов за счет наличия нужных материалов.
 - Более эффективное использование складских помещений.
+
+
+<div class="slideshow-container">
+
+  <div class="mySlides fade">
+    <img src="images/1.png" style="width:100%">
+  </div>
+
+  <div class="mySlides fade">
+    <img src="images/2.png" style="width:100%">
+  </div>
+
+  <div class="mySlides fade">
+    <img src="images/3.png" style="width:100%">
+  </div>
+
+  <div class="mySlides fade">
+    <img src="images/4.png" style="width:100%">
+  </div>
+
+  <div class="mySlides fade">
+    <img src="images/5.png" style="width:100%">
+  </div>
+
+  <div class="mySlides fade">
+    <img src="images/6.png" style="width:100%">
+  </div>
+
+</div>
+
+<style>
+.slideshow-container {
+  max-width: 1000px;
+  position: relative;
+  margin: auto;
+}
+
+.mySlides {
+  display: none;
+}
+
+.fade {
+  animation-name: fade;
+  animation-duration: 1.5s;
+}
+
+@keyframes fade {
+  from {opacity: .4} 
+  to {opacity: 1}
+}
+</style>
+
+<script>
+let slideIndex = 0;
+showSlides();
+
+function showSlides() {
+  let slides = document.getElementsByClassName("mySlides");
+  for (let i = 0; i < slides.length; i++) {
+    slides[i].style.display = "none";  
+  }
+  slideIndex++;
+  if (slideIndex > slides.length) {slideIndex = 1}    
+  slides[slideIndex-1].style.display = "block";  
+  setTimeout(showSlides, 2000); // Change image every 2 seconds
+}
+</script>
