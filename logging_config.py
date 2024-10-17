@@ -33,7 +33,7 @@ def log_user_action(action, message, level="INFO"):
     st.session_state['logger'].log(log_level, message, extra=extra)
 
 def create_private_download_button():
-    SECRET_CODE = "nornik"
+    SECRET_CODE = "log"
     # Появляется поле для ввода кода
     entered_code = st.text_input("Введите код для доступа к логам", type="password")
     # Проверяем правильность кода
@@ -46,7 +46,7 @@ def create_private_download_button():
         # Проверяем, существует ли файл
         if file.exists():
             # Читаем содержимое файла
-            with file.open('r', encoding='utf-8') as f:
+            with file.open('r', encoding='latin-1') as f:
                 file_content = f.read()
             # Текущая дата и время
             current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
