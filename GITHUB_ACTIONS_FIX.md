@@ -28,8 +28,13 @@ python scripts/test_imports_simple.py
 - ✅ Быстрая проверка
 - ✅ Понятный вывод
 - ✅ Работает в любой среде
+- ✅ Автоматически пропускает desktop тесты если PyQt6 не установлен
 
-**Вывод:**
+**Exit коды:**
+- `0` - Успех (все критичные тесты прошли, опциональные могут быть пропущены)
+- `1` - Ошибка (один или более критичных тестов упали)
+
+**Вывод (с PyQt6 - локально):**
 ```
 [TEST 1/6] Importing core analysis modules... [OK] PASSED
 [TEST 2/6] Importing utils modules... [OK] PASSED
@@ -38,7 +43,20 @@ python scripts/test_imports_simple.py
 [TEST 5/6] Checking key functions availability... [OK] PASSED
 [TEST 6/6] Checking data validation functions... [OK] PASSED
 
-[SUCCESS] ALL TESTS PASSED
+[SUCCESS] ALL CRITICAL TESTS PASSED
+```
+
+**Вывод (без PyQt6 - в GitHub Actions):**
+```
+[TEST 1/6] Importing core analysis modules... [OK] PASSED
+[TEST 2/6] Importing utils modules... [OK] PASSED
+[TEST 3/6] Importing desktop modules... [SKIP] SKIPPED (PyQt6 not installed - OK for CI)
+[TEST 4/6] Importing web modules... [OK] PASSED
+[TEST 5/6] Checking key functions availability... [OK] PASSED
+[TEST 6/6] Checking data validation functions... [OK] PASSED
+
+[SUCCESS] ALL CRITICAL TESTS PASSED
+Note: 1 optional test(s) skipped
 ```
 
 ### 2. Pytest тесты (дополнительный метод)
@@ -168,6 +186,17 @@ pytest tests/functional/test_imports.py -v -s
 **Решение:** Скрипты уже настраивают PYTHONPATH автоматически, но убедись что:
 1. Ты в корне проекта
 2. Структура папок правильная (src/, tests/)
+
+### Desktop тест упал с "No module named 'PyQt6'"
+
+**Причина:** PyQt6 не установлен
+
+**Решение в CI:** Это нормально! Тест должен показать `[SKIP]`, а не `[FAIL]`. Если показывает `[FAIL]` - обнови скрипт.
+
+**Решение локально:**
+```bash
+pip install -r requirements_desktop.txt
+```
 
 ## Структура тестов
 

@@ -45,7 +45,7 @@ def test_imports():
         print(f"[FAIL] FAILED: {e}")
         tests_failed += 1
 
-    # Test 3: Desktop modules
+    # Test 3: Desktop modules (optional - requires PyQt6)
     print("[TEST 3/6] Importing desktop modules...", end=" ")
     try:
         from src.desktop import desktop_ui_styles
@@ -56,6 +56,13 @@ def test_imports():
         assert file_validation is not None
         print("[OK] PASSED")
         tests_passed += 1
+    except ImportError as e:
+        if "PyQt6" in str(e):
+            print("[SKIP] SKIPPED (PyQt6 not installed - OK for CI)")
+            # Don't count as failed, just skip
+        else:
+            print(f"[FAIL] FAILED: {e}")
+            tests_failed += 1
     except Exception as e:
         print(f"[FAIL] FAILED: {e}")
         tests_failed += 1
@@ -109,16 +116,24 @@ def test_imports():
         tests_failed += 1
 
     # Summary
+    total_tests = 6
+    tests_skipped = total_tests - tests_passed - tests_failed
+
     print("\n" + "="*50)
-    print(f"Tests passed: {tests_passed}/{tests_passed + tests_failed}")
-    print(f"Tests failed: {tests_failed}/{tests_passed + tests_failed}")
+    print(f"Tests passed: {tests_passed}/{total_tests}")
+    print(f"Tests failed: {tests_failed}/{total_tests}")
+    if tests_skipped > 0:
+        print(f"Tests skipped: {tests_skipped}/{total_tests}")
     print("="*50)
 
     if tests_failed > 0:
         print("\n[ERROR] SOME TESTS FAILED")
         sys.exit(1)
     else:
-        print("\n[SUCCESS] ALL TESTS PASSED")
+        # Success even if some tests were skipped (e.g., desktop modules without PyQt6)
+        print("\n[SUCCESS] ALL CRITICAL TESTS PASSED")
+        if tests_skipped > 0:
+            print(f"Note: {tests_skipped} optional test(s) skipped")
         sys.exit(0)
 
 if __name__ == '__main__':
