@@ -2,7 +2,14 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import plotly.express as px
-import forecasting_models as fm
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
+
+from src.analysis import forecasting_models as fm
 
 def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column,
                           start_balance_column, end_balance_column, recommendation_column,

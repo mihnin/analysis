@@ -3,10 +3,17 @@
 
 Использует PyInstaller для создания standalone исполняемого файла для Windows.
 """
+# -*- coding: utf-8 -*-
+import sys
+import io
+
+# Исправление кодировки для Windows
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 import os
 import subprocess
-import sys
 
 # Конфигурация сборки
 APP_NAME = "Nornickel_Inventory_Analysis"

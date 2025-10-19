@@ -1,0 +1,137 @@
+name: CI - Tests and Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov flake8 black
+
+    - name: Run syntax check with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=migrations,__pycache__,.git,build,dist
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics --exclude=migrations,__pycache__,.git,build,dist
+
+    - name: Check code formatting with black
+      run: |
+        black --check --diff --exclude='migrations|__pycache__|\.git|build|dist' .
+      continue-on-error: true
+
+    - name: Run unit tests with pytest
+      run: |
+        pytest test_historical_analysis.py test_forecast_analysis.py test_forecasting_models.py -v --tb=short --maxfail=3
+
+    - name: Run consumption convention tests
+      run: |
+        pytest test_consumption_conventions.py -v --tb=short
+
+    - name: Run integration tests
+      run: |
+        pytest test_new_features.py test_both_templates.py -v --tb=short
+      continue-on-error: true
+
+    - name: Generate coverage report
+      run: |
+        pytest --cov=. --cov-report=xml --cov-report=term test_historical_analysis.py test_forecast_analysis.py test_forecasting_models.py
+      continue-on-error: true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+      continue-on-error: true
+
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint mypy black isort
+
+    - name: Run pylint
+      run: |
+        pylint --exit-zero --max-line-length=127 --disable=C0103,C0114,C0115,C0116,R0913,R0914 \
+          historical_analysis.py forecast_analysis.py forecasting_models.py data_validation.py utils.py
+      continue-on-error: true
+
+    - name: Check import sorting with isort
+      run: |
+        isort --check-only --diff --skip migrations --skip __pycache__ --skip .git --skip build --skip dist .
+      continue-on-error: true
+
+  functional-test:
+    name: Functional Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: Run import tests
+      run: |
+        pytest test_imports.py -v
+
+    - name: Test template files
+      run: |
+        pytest test_both_templates.py -v
+      continue-on-error: true
+
+    - name: Verify core modules load
+      run: |
+        python -c "import historical_analysis; import forecast_analysis; import forecasting_models; print('✓ All core modules loaded successfully')"

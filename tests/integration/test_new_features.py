@@ -1,10 +1,17 @@
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(root_dir))
 """
 Тест новых функций приложения
 """
 import pandas as pd
 import sys
 import io
-import historical_analysis as ha
+from src.analysis import historical_analysis as ha
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 

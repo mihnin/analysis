@@ -1,3 +1,10 @@
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(root_dir))
 """
 Тестирование моделей прогнозирования на реальных данных
 """
@@ -5,7 +12,7 @@ import pandas as pd
 import numpy as np
 import sys
 import io
-import forecasting_models as fm
+from src.analysis import forecasting_models as fm
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 

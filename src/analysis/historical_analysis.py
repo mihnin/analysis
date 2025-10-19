@@ -2,7 +2,14 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 from scipy import stats
-import data_validation as dv
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
+
+from src.utils import data_validation as dv
 
 def analyze_historical_data(df, date_column, branch_column, material_column, start_quantity_column, end_quantity_column, end_cost_column, interest_rate, consumption_column=None, lead_time_days=30, consumption_convention='AUTO'):
     """

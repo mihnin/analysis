@@ -32,6 +32,14 @@ MANIFEST
 *.manifest
 *.spec
 
+# Executable files
+*.exe
+*.app
+*.dmg
+*.msi
+*.deb
+*.rpm
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -161,3 +169,32 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 .aider*
+
+# Build directories
+build/
+dist/
+
+# Application logs
+*.log
+application.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Screenshots and images (except documentation)
+*.png
+!docs/**/*.png
+!images/**/*.png
+
+# Large data files (except templates)
+*.csv
+*.xlsx
+!datasets/*_template*.xlsx

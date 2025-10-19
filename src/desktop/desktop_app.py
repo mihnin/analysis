@@ -1,3 +1,10 @@
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 """
 Главное desktop приложение для анализа и прогнозирования запасов.
 
@@ -16,16 +23,18 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 
 # Импорт наших модулей
-from desktop_ui_styles import *
-from desktop_ui_components import *
-from file_validation import *
-from excel_export_desktop import export_full_report
+from src.desktop.desktop_ui_styles import *
+from src.desktop.desktop_ui_components import *
+from src.desktop.file_validation import *
+from src.desktop.excel_export_desktop import export_full_report
 
 # Импорт логики анализа из существующих модулей
-from historical_analysis import analyze_historical_data, get_explanation as get_historical_explanation
-from forecast_analysis import (
+from src.analysis.historical_analysis import analyze_historical_data, get_explanation as get_historical_explanation
+from src.analysis.forecast_analysis import (
     analyze_forecast_data,
     auto_forecast_demand,
+    forecast_start_balance,
+    calculate_purchase_recommendations,
     get_explanation as get_forecast_explanation
 )
 
@@ -50,16 +59,16 @@ class AnalysisWorker(QThread):
             df_hist = pd.read_excel(self.config['historical_file'])
 
             self.progress.emit(30, "Анализ исторических данных...")
-            hist_results = analyze_historical_data(
+            hist_results, _ = analyze_historical_data(
                 df=df_hist,
-                date_col=self.config.get('date_col', df_hist.columns[0]),
-                branch_col=self.config.get('branch_col', None),
-                material_col=self.config.get('material_col', df_hist.columns[1]),
-                start_qty_col=self.config.get('start_qty_col', df_hist.columns[2]),
-                end_qty_col=self.config.get('end_qty_col', df_hist.columns[3]),
-                end_cost_col=self.config.get('end_cost_col', None),
-                consumption_col=self.config.get('consumption_col', None),
+                date_column=self.config.get('date_col', df_hist.columns[0]),
+                branch_column=self.config.get('branch_col', None),
+                material_column=self.config.get('material_col', df_hist.columns[1]),
+                start_quantity_column=self.config.get('start_qty_col', df_hist.columns[2]),
+                end_quantity_column=self.config.get('end_qty_col', df_hist.columns[3]),
+                end_cost_column=self.config.get('end_cost_col', None),
                 interest_rate=self.config.get('interest_rate', 0.05),
+                consumption_column=self.config.get('consumption_col', None),
                 lead_time_days=self.config.get('lead_time_days', 30)
             )
             results['historical'] = hist_results
@@ -71,27 +80,56 @@ class AnalysisWorker(QThread):
                 self.progress.emit(50, "Генерация автоматического прогноза...")
 
                 forecast_df = auto_forecast_demand(
-                    df_historical=df_hist,
-                    date_col=self.config.get('date_col'),
-                    material_col=self.config.get('material_col'),
-                    branch_col=self.config.get('branch_col'),
-                    consumption_col=self.config.get('consumption_col'),
-                    periods=self.config.get('forecast_periods', 12),
-                    model=self.config.get('forecast_model', 'auto')
+                    historical_df=df_hist,
+                    forecast_periods=self.config.get('forecast_periods', 12),
+                    date_column=self.config.get('date_col'),
+                    material_column=self.config.get('material_col'),
+                    branch_column=self.config.get('branch_col'),
+                    consumption_column=self.config.get('consumption_col'),
+                    forecast_model=self.config.get('forecast_model', 'auto')
                 )
 
-                self.progress.emit(70, "Расчет рекомендаций по закупкам...")
-                forecast_results = analyze_forecast_data(
-                    df_forecast=forecast_df,
-                    df_historical=df_hist,
-                    date_col=self.config.get('date_col'),
-                    branch_col=self.config.get('branch_col'),
-                    material_col=self.config.get('material_col'),
-                    planned_demand_col='planned_demand',
-                    start_qty_col=self.config.get('start_qty_col'),
-                    end_qty_col=self.config.get('end_qty_col'),
-                    safety_stock_pct=self.config.get('safety_stock_pct', 0.20),
-                    forecast_model=self.config.get('forecast_model', 'auto')
+                self.progress.emit(70, "Прогноз начальных остатков...")
+                # Прогноз начальных остатков
+                forecast_df['Прогноз остатка на начало'] = forecast_start_balance(
+                    df_hist,
+                    forecast_df,
+                    self.config.get('date_col'),
+                    self.config.get('material_col'),
+                    self.config.get('branch_col'),
+                    self.config.get('end_qty_col'),
+                    self.config.get('date_col'),  # forecast_date_column
+                    self.config.get('material_col'),  # forecast_material_column
+                    self.config.get('branch_col'),  # forecast_branch_column
+                    forecast_model='naive',
+                    seasonal_periods=12
+                )
+
+                # Расчет конечных остатков
+                forecast_df['Прогноз остатка на конец'] = forecast_df['Прогноз остатка на начало'] - forecast_df['Запланированная потребность']
+
+                self.progress.emit(85, "Расчет рекомендаций по закупкам...")
+                # Расчет рекомендаций
+                recommendations_df = calculate_purchase_recommendations(
+                    forecast_df,
+                    'Прогноз остатка на конец',
+                    'Запланированная потребность',
+                    self.config.get('safety_stock_pct', 0.20)
+                )
+                forecast_df = pd.concat([forecast_df, recommendations_df], axis=1)
+
+                # Анализ
+                forecast_results, _ = analyze_forecast_data(
+                    forecast_df,
+                    self.config.get('date_col'),
+                    self.config.get('material_col'),
+                    self.config.get('branch_col'),
+                    'Запланированная потребность',
+                    'Прогноз остатка на начало',
+                    'Прогноз остатка на конец',
+                    'Рекомендация по закупке',
+                    'Будущий спрос',
+                    'Страховой запас'
                 )
 
             else:
@@ -99,17 +137,48 @@ class AnalysisWorker(QThread):
                 self.progress.emit(50, "Загрузка прогнозных данных...")
                 df_forecast = pd.read_excel(self.config['forecast_file'])
 
-                self.progress.emit(70, "Расчет рекомендаций по закупкам...")
-                forecast_results = analyze_forecast_data(
-                    df_forecast=df_forecast,
-                    df_historical=df_hist,
-                    date_col=self.config.get('date_col'),
-                    branch_col=self.config.get('branch_col'),
-                    material_col=self.config.get('material_col'),
-                    planned_demand_col=self.config.get('planned_demand_col'),
-                    start_qty_col=self.config.get('start_qty_col'),
-                    end_qty_col=self.config.get('end_qty_col'),
-                    safety_stock_pct=self.config.get('safety_stock_pct', 0.20)
+                self.progress.emit(70, "Прогноз начальных остатков...")
+                # Прогноз начальных остатков
+                df_forecast['Прогноз остатка на начало'] = forecast_start_balance(
+                    df_hist,
+                    df_forecast,
+                    self.config.get('date_col'),
+                    self.config.get('material_col'),
+                    self.config.get('branch_col'),
+                    self.config.get('end_qty_col'),
+                    self.config.get('date_col'),  # forecast_date_column
+                    self.config.get('material_col'),  # forecast_material_column
+                    self.config.get('branch_col'),  # forecast_branch_column
+                    forecast_model='naive',
+                    seasonal_periods=12
+                )
+
+                # Расчет конечных остатков
+                planned_demand_col = self.config.get('planned_demand_col')
+                df_forecast['Прогноз остатка на конец'] = df_forecast['Прогноз остатка на начало'] - df_forecast[planned_demand_col]
+
+                self.progress.emit(85, "Расчет рекомендаций по закупкам...")
+                # Расчет рекомендаций
+                recommendations_df = calculate_purchase_recommendations(
+                    df_forecast,
+                    'Прогноз остатка на конец',
+                    planned_demand_col,
+                    self.config.get('safety_stock_pct', 0.20)
+                )
+                df_forecast = pd.concat([df_forecast, recommendations_df], axis=1)
+
+                # Анализ
+                forecast_results, _ = analyze_forecast_data(
+                    df_forecast,
+                    self.config.get('date_col'),
+                    self.config.get('material_col'),
+                    self.config.get('branch_col'),
+                    planned_demand_col,
+                    'Прогноз остатка на начало',
+                    'Прогноз остатка на конец',
+                    'Рекомендация по закупке',
+                    'Будущий спрос',
+                    'Страховой запас'
                 )
 
             results['forecast'] = forecast_results
@@ -676,15 +745,182 @@ class MainWindow(QMainWindow):
             <li><b>Сохраните результаты в Excel</b></li>
         </ol>
 
-        <h3>Требования к файлу исторических данных:</h3>
+        <h3>📊 СТРУКТУРА ФАЙЛА ИСТОРИЧЕСКИХ ДАННЫХ:</h3>
+
+        <h4 style='color: #004C97;'>✅ Обязательные колонки:</h4>
+        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
+            <tr style='background-color: #004C97; color: white;'>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Дата</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Дата, Date, Период, Month, Месяц</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Дата (ГГГГ-ММ-ДД)</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Материал</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Материал, Material, Товар, Артикул, SKU, Item</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Начальный остаток</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Начальный остаток, Start Balance, Остаток на начало</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Конечный остаток</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Конечный остаток, End Balance, Остаток на конец</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
+            </tr>
+        </table>
+
+        <h4 style='color: #0077C8;'>⭐ Рекомендуемые колонки (для точного анализа):</h4>
+        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
+            <tr style='background-color: #0077C8; color: white;'>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Филиал</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Филиал, Branch, Склад, Warehouse, Подразделение</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Потребление</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Потребление, Consumption, Расход, Usage, Использование</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Стоимость</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Стоимость, Cost, Цена, Price, Стоимость конечная</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
+            </tr>
+        </table>
+
+        <h4 style='color: #FF9800;'>⚠️ Важно:</h4>
         <ul>
-            <li>Формат: .xlsx или .xls</li>
-            <li>Обязательные колонки: Дата, Материал, Начальный остаток, Конечный остаток</li>
-            <li>Рекомендуемые колонки: Филиал, Потребление, Стоимость</li>
+            <li>Формат файла: <b>.xlsx</b> или <b>.xls</b></li>
+            <li>Даты должны быть в <b>формате даты</b> (не текст!)</li>
+            <li>Числа должны быть в <b>числовом формате</b> (не текст!)</li>
+            <li>Минимум данных: <b>6-12 месяцев истории</b></li>
+            <li>Рекомендуется: <b>12-24 месяца</b> для точного прогноза</li>
         </ul>
 
-        <h3>Техническая поддержка:</h3>
+        <h3>📈 СТРУКТУРА ФАЙЛА ПРОГНОЗНЫХ ДАННЫХ (опционально):</h3>
+
+        <h4 style='color: #004C97;'>✅ Обязательные колонки:</h4>
+        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
+            <tr style='background-color: #004C97; color: white;'>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Дата</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Дата, Date, Период</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Дата (ГГГГ-ММ-ДД)</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Материал</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Материал, Material, Товар</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>Плановый спрос</b></td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Плановый спрос, Demand, Forecast, Прогноз, План</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
+            </tr>
+        </table>
+
+        <p style='background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
+        <b>💡 Совет:</b> Вместо загрузки прогнозного файла используйте режим
+        <b>"Автоматический прогноз"</b> - система сама сгенерирует прогноз на основе исторических данных!
+        </p>
+
+        <h3>📞 Техническая поддержка:</h3>
         <p>При возникновении вопросов обратитесь в службу технической поддержки Норникель Спутник.</p>
+
+        <h3>📁 Шаблоны файлов:</h3>
+        <p>Примеры правильно оформленных файлов находятся в папке: <br>
+        <code>C:\\dev\\analysis\\datasets\\</code></p>
+
+        <h4 style='color: #004C97;'>Два готовых шаблона на выбор:</h4>
+
+        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
+            <tr style='background-color: #004C97; color: white;'>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Шаблон</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Колонок</th>
+                <th style='padding: 8px; border: 1px solid #ddd;'>Когда использовать</th>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>historical_data_template.xlsx</b><br>(упрощенный)</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>7</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Нет данных о поступлениях и ценах.<br>Все 7 колонок используются приложением.</td>
+            </tr>
+            <tr>
+                <td style='padding: 8px; border: 1px solid #ddd;'><b>historical_data_correct_template.xlsx</b><br>(полный) ⭐</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>9</td>
+                <td style='padding: 8px; border: 1px solid #ddd;'>Есть данные о поступлениях и ценах.<br>7 колонок используются приложением,<br>2 колонки (Поступление, Цена) - для прозрачности.</td>
+            </tr>
+        </table>
+
+        <h4 style='color: #FF9800;'>⚡ ВАЖНО: Какие поля обязательны?</h4>
+
+        <p style='background-color: #FFF3E0; padding: 10px; border-radius: 5px; border-left: 4px solid #FF9800;'>
+        <b>Минимум для работы (4 поля):</b><br>
+        ✅ Дата<br>
+        ✅ Материал<br>
+        ✅ Начальный остаток<br>
+        ✅ Конечный остаток<br>
+        <br>
+        <b>Крайне рекомендуется (1 поле):</b><br>
+        ⭐⭐⭐ <b>Потребление</b> - БЕЗ этого поля прогноз будет менее точным!<br>
+        <br>
+        <b>Рекомендуется (2 поля):</b><br>
+        ⭐ Филиал - для анализа по складам<br>
+        ⭐ Конечная стоимость - для расчета opportunity cost<br>
+        <br>
+        <b>Дополнительно (не используются приложением):</b><br>
+        📊 Поступление - для балансового уравнения (только в полном шаблоне)<br>
+        📊 Цена за единицу - для расчета стоимости (только в полном шаблоне)
+        </p>
+
+        <h4 style='color: #4CAF50;'>✅ Упрощенный шаблон (7 колонок):</h4>
+        <p style='font-family: monospace; background-color: #E8F5E9; padding: 10px; border-radius: 5px;'>
+        1. Дата ✅<br>
+        2. Филиал ⭐<br>
+        3. Материал ✅<br>
+        4. Начальный остаток ✅<br>
+        5. Конечный остаток ✅<br>
+        6. Потребление ⭐⭐⭐<br>
+        7. Конечная стоимость ⭐
+        </p>
+        <p><b>Все 7 колонок используются приложением!</b></p>
+
+        <h4 style='color: #2196F3;'>⭐ Полный шаблон (9 колонок):</h4>
+        <p style='font-family: monospace; background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
+        1. Дата ✅<br>
+        2. Филиал ⭐<br>
+        3. Материал ✅<br>
+        4. Начальный остаток ✅<br>
+        5. <b>Поступление 📊</b> (не используется приложением - для прозрачности)<br>
+        6. Потребление ⭐⭐⭐<br>
+        7. Конечный остаток ✅<br>
+        8. <b>Цена за единицу 📊</b> (не используется приложением - для расчетов в Excel)<br>
+        9. Конечная стоимость ⭐
+        </p>
+        <p><b>7 из 9 колонок используются приложением!</b><br>
+        2 дополнительные колонки для полноты данных и балансового уравнения:<br>
+        <code>Конечный остаток = Начальный остаток + Поступление - Потребление</code></p>
+
+        <p style='background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
+        <b>💡 Вывод:</b> Оба шаблона корректно работают с приложением!<br>
+        Используйте <b>упрощенный</b> (7 колонок) для большинства случаев.<br>
+        Используйте <b>полный</b> (9 колонок) если хотите видеть балансовое уравнение.
+        </p>
         """
 
         msg = QMessageBox(self)

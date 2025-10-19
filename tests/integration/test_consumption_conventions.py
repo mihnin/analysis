@@ -1,3 +1,10 @@
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(root_dir))
 """
 Тестирование обработки разных конвенций списания (+ и -)
 """
@@ -5,7 +12,7 @@ import pandas as pd
 import numpy as np
 import sys
 import io
-import data_validation as dv
+from src.utils import data_validation as dv
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 

@@ -11,7 +11,7 @@ import os
 # Добавляем путь к модулям
 sys.path.insert(0, os.path.dirname(__file__))
 
-import historical_analysis as ha
+from src.analysis import historical_analysis as ha
 
 
 class TestHistoricalAnalysis(unittest.TestCase):

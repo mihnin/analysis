@@ -1,0 +1,155 @@
+# План реорганизации структуры проекта
+
+## Новая структура:
+
+analysis/
+├── src/                          # Основной код
+│   ├── analysis/                 # Модули анализа данных
+│   │   ├── __init__.py
+│   │   ├── historical_analysis.py
+│   │   ├── forecast_analysis.py
+│   │   └── forecasting_models.py
+│   ├── desktop/                  # Desktop приложение (PyQt6)
+│   │   ├── __init__.py
+│   │   ├── desktop_app.py
+│   │   ├── desktop_ui_components.py
+│   │   ├── desktop_ui_styles.py
+│   │   ├── file_validation.py
+│   │   └── excel_export_desktop.py
+│   ├── web/                      # Web приложение (Streamlit)
+│   │   ├── __init__.py
+│   │   ├── app.py
+│   │   └── logging_config.py
+│   └── utils/                    # Общие утилиты
+│       ├── __init__.py
+│       ├── data_validation.py
+│       ├── data_processing.py
+│       ├── utils.py
+│       ├── visualization.py
+│       └── ui_elements.py
+├── tests/                        # Тесты
+│   ├── unit/                     # Модульные тесты
+│   │   ├── test_historical_analysis.py
+│   │   ├── test_forecast_analysis.py
+│   │   └── test_forecasting_models.py
+│   ├── integration/              # Интеграционные тесты
+│   │   ├── test_new_features.py
+│   │   ├── test_both_templates.py
+│   │   └── test_consumption_conventions.py
+│   └── functional/               # Функциональные тесты
+│       ├── test_imports.py
+│       └── test_desktop_app.py
+├── docs/                         # Документация
+│   ├── guides/                   # Руководства пользователя
+│   │   ├── CONSUMPTION_CONVENTION_GUIDE.md
+│   │   ├── FORECASTING_MODELS_GUIDE.md
+│   │   ├── DESKTOP_APP_README.md
+│   │   ├── КАК_СОБРАТЬ_EXE.md
+│   │   └── БЫСТРЫЙ_СТАРТ.txt
+│   └── reports/                  # Технические отчеты
+│       ├── ERRORS_FOUND.md
+│       ├── FIXES_SUMMARY.md
+│       ├── FINAL_REPORT.md
+│       ├── FORECASTING_INTEGRATION_REPORT.md
+│       ├── СТРУКТУРА_ДАННЫХ.md
+│       └── ...
+├── scripts/                      # Служебные скрипты
+│   ├── build_exe.py
+│   ├── create_templates.py
+│   ├── create_correct_template.py
+│   └── check_app_buttons.py
+├── archive/                      # Устаревшие файлы
+│   ├── analyze_calculations.py
+│   ├── analyze_forecast.py
+│   ├── analyze_forecasting_models.py
+│   ├── business_logic_review.py
+│   ├── final_verification.py
+│   └── apply_migration.py
+├── datasets/                     # Шаблоны и тестовые данные
+├── migrations/                   # Миграции БД (если нужны)
+├── images/                       # Изображения для README
+├── .github/workflows/            # CI/CD
+│   └── ci.yml
+├── requirements.txt
+├── requirements_desktop.txt
+├── pytest.ini
+├── .gitignore
+├── CLAUDE.md
+├── README.md
+└── LICENSE
+
+## Файлы для перемещения:
+
+1. В src/analysis/:
+   - historical_analysis.py
+   - forecast_analysis.py
+   - forecasting_models.py
+
+2. В src/desktop/:
+   - desktop_app.py
+   - desktop_ui_components.py
+   - desktop_ui_styles.py
+   - file_validation.py
+   - excel_export_desktop.py
+
+3. В src/web/:
+   - app.py
+   - logging_config.py
+
+4. В src/utils/:
+   - data_validation.py
+   - data_processing.py
+   - utils.py
+   - visualization.py
+   - ui_elements.py
+
+5. В tests/unit/:
+   - test_historical_analysis.py
+   - test_forecast_analysis.py
+   - test_forecasting_models.py
+
+6. В tests/integration/:
+   - test_new_features.py
+   - test_both_templates.py
+   - test_consumption_conventions.py
+
+7. В tests/functional/:
+   - test_imports.py
+
+8. В docs/guides/:
+   - CONSUMPTION_CONVENTION_GUIDE.md
+   - FORECASTING_MODELS_GUIDE.md
+   - DESKTOP_APP_README.md
+   - КАК_СОБРАТЬ_EXE.md
+   - БЫСТРЫЙ_СТАРТ.txt
+   - ФИНАЛЬНАЯ_ИНСТРУКЦИЯ_ДЛЯ_ВАС.md
+
+9. В docs/reports/:
+   - ERRORS_FOUND.md
+   - FIXES_SUMMARY.md
+   - FINAL_REPORT.md
+   - FORECASTING_INTEGRATION_REPORT.md
+   - СТРУКТУРА_ДАННЫХ.md
+   - ИСПРАВЛЕНО_СТРУКТУРА_ДАННЫХ.md
+   - ОБЯЗАТЕЛЬНЫЕ_И_НЕОБЯЗАТЕЛЬНЫЕ_ПОЛЯ.md
+   - ИТОГ_ЧТО_ИСПОЛЬЗОВАТЬ.md
+   - ИТОГОВАЯ_СВОДКА.md
+   - ПРОВЕРКА_КНОПОК_РЕЗУЛЬТАТ.md
+   - ФИНАЛЬНЫЙ_ЧЕКЛИСТ.md
+
+10. В scripts/:
+    - build_exe.py
+    - create_templates.py
+    - create_correct_template.py
+    - check_app_buttons.py
+
+11. В archive/:
+    - analyze_calculations.py
+    - analyze_forecast.py
+    - analyze_forecasting_models.py
+    - business_logic_review.py
+    - final_verification.py
+    - apply_migration.py
+    - 2.png (скриншот)
+    - Nornickel_Inventory_Analysis.spec
+    - nornik.json

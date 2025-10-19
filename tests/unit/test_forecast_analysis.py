@@ -11,7 +11,7 @@ import os
 # Добавляем путь к модулям
 sys.path.insert(0, os.path.dirname(__file__))
 
-import forecast_analysis as fa
+from src.analysis import forecast_analysis as fa
 
 
 class TestForecastAnalysis(unittest.TestCase):

@@ -1,7 +1,14 @@
 import streamlit as st
 import pandas as pd
-import data_processing as dp
+from src.utils import data_processing as dp
 import db_operations as dbo
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 
 def upload_historical_data():
     st.header("Загрузка исторических данных")

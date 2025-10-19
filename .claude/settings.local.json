@@ -1,16 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python analyze_calculations.py)",
-      "Bash(python analyze_forecast.py)",
-      "Bash(python -m pytest test_historical_analysis.py -v)",
-      "Bash(python -m pytest test_forecast_analysis.py -v)",
-      "Bash(python -m pytest test_historical_analysis.py test_forecast_analysis.py -v)",
-      "Bash(python business_logic_review.py)",
-      "Bash(python test_new_features.py)",
-      "Bash(python test_consumption_conventions.py)",
-      "Bash(python analyze_forecasting_models.py)",
-      "Bash(python test_forecasting_models.py)"
+      "Bash(python -m pytest tests/unit/test_historical_analysis.py::TestHistoricalAnalysis::test_growth_calculation -xvs)",
+      "Bash(python -m pytest tests/ -v --tb=line)",
+      "Bash(python -m pytest tests/unit/ --tb=short)",
+      "Bash(python tests/functional/test_imports.py)",
+      "Bash(python -c \"\nimport sys\nsys.path.insert(0, ''.'')\nfrom src.analysis import historical_analysis\nfrom src.analysis import forecast_analysis\nfrom src.analysis import forecasting_models\nfrom src.utils import data_validation\nprint(''[OK] All core modules imported successfully!'')\n\")"
     ],
     "deny": [],
     "ask": []

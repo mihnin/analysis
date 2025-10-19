@@ -1,3 +1,10 @@
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
 """
 Переиспользуемые UI компоненты для desktop приложения Норникель Спутник.
 """
@@ -8,7 +15,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPixmap, QPainter, QColor
-from desktop_ui_styles import *
+from src.desktop.desktop_ui_styles import *
 
 
 class NornikPrimaryButton(QPushButton):

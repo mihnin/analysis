@@ -4,15 +4,22 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import visualization as vis
+from src.utils import visualization as vis
 #import inventory_analysis as ia
 import io
 from io import BytesIO
 import xlsxwriter  # Добавьте эту строку
-import historical_analysis as ha
-import forecast_analysis as fa
-import utils
-from logging_config import setup_logger, log_user_action, create_private_download_button
+
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию в PYTHONPATH
+root_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(root_dir))
+from src.analysis import historical_analysis as ha
+from src.analysis import forecast_analysis as fa
+from src.utils import utils
+from src.web.logging_config import setup_logger, log_user_action, create_private_download_button
 
 # Инициализация логирования
 logger = setup_logger()
