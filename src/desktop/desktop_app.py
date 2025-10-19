@@ -840,15 +840,32 @@ class MainWindow(QMainWindow):
         self.progress_label.setVisible(False)
 
         if success:
+            logger.info("Анализ завершен успешно, отображение результатов...")
             self.analysis_results = result
             self.show_results(result)
             self.export_button.setEnabled(True)
-            show_message_box(
+
+            # Предложить автоматическое сохранение
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
                 self,
-                "Успех",
-                "Анализ успешно завершен! Результаты отображены ниже.",
-                "success"
+                "Анализ завершен успешно!",
+                "Результаты готовы!\n\nХотите сохранить их в Excel прямо сейчас?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
             )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                logger.info("Пользователь выбрал автосохранение в Excel")
+                self.export_results()
+            else:
+                logger.info("Пользователь отказался от автосохранения")
+                show_message_box(
+                    self,
+                    "Готово",
+                    "Результаты отображены ниже. Вы можете сохранить их позже кнопкой '💾 Сохранить в Excel'",
+                    "info"
+                )
         else:
             show_message_box(
                 self,
@@ -859,33 +876,82 @@ class MainWindow(QMainWindow):
 
     def show_results(self, results):
         """Показать результаты анализа"""
-        self.results_card.setVisible(True)
+        logger.info("Отображение результатов пользователю...")
 
-        # Формирование сводки
-        hist_df = results['historical']
-        forecast_df = results['forecast']
+        try:
+            self.results_card.setVisible(True)
 
-        summary = f"""
-        <h3 style='color: {NornikColors.PRIMARY_BLUE};'>Сводка результатов:</h3>
+            # Формирование сводки
+            hist_df = results.get('historical')
+            forecast_df = results.get('forecast')
 
-        <b>Исторический анализ:</b><br>
-        • Проанализировано материалов: {hist_df['Материал'].nunique() if 'Материал' in hist_df else len(hist_df)}<br>
-        • Период анализа: {hist_df['Дата'].min()} - {hist_df['Дата'].max() if 'Дата' in hist_df else 'N/A'}<br>
-        • Рассчитано метрик: {len(hist_df.columns)}<br>
-        <br>
+            logger.info("Формирование краткой сводки...")
+            summary = f"""
+        <h2 style='color: {NornikColors.PRIMARY_BLUE}; border-bottom: 2px solid {NornikColors.PRIMARY_BLUE}; padding-bottom: 10px;'>
+        📊 Результаты анализа запасов
+        </h2>
 
-        <b>Прогноз и закупки:</b><br>
-        • Сгенерировано прогнозов: {len(forecast_df)}<br>
-        • Всего рекомендаций по закупкам: {(forecast_df.iloc[:, -1] > 0).sum() if len(forecast_df) > 0 else 0}<br>
-        • Общий объем рекомендуемых закупок: {forecast_df.iloc[:, -1].sum():.2f} ед.<br>
-        <br>
+        <div style='background-color: #f0f5ff; padding: 20px; border-radius: 10px; margin: 20px 0;'>
+        <h3 style='color: {NornikColors.PRIMARY_BLUE}; margin-top: 0;'>📈 Исторический анализ:</h3>
+        <ul style='font-size: 14px; line-height: 1.8;'>
+            <li><b>Материалов:</b> {hist_df['Материал'].nunique() if 'Материал' in hist_df.columns else len(hist_df)}</li>
+            <li><b>Филиалов:</b> {hist_df['Филиал'].nunique() if 'Филиал' in hist_df.columns else 'N/A'}</li>
+            <li><b>Всего записей:</b> {len(hist_df)}</li>
+            <li><b>Рассчитано метрик:</b> {len(hist_df.columns)}</li>
+        </ul>
+        </div>
 
-        <p style='color: {NornikColors.SUCCESS}; font-weight: bold;'>
-        Для просмотра подробных результатов нажмите "Сохранить в Excel"
+        <div style='background-color: #f0fff0; padding: 20px; border-radius: 10px; margin: 20px 0;'>
+        <h3 style='color: {NornikColors.SUCCESS}; margin-top: 0;'>📦 Прогноз и закупки:</h3>
+        <ul style='font-size: 14px; line-height: 1.8;'>
+            <li><b>Всего прогнозов:</b> {len(forecast_df)}</li>
+            <li><b>Рекомендаций по закупкам:</b> {(forecast_df['Рекомендация по закупке'] > 0).sum() if 'Рекомендация по закупке' in forecast_df.columns else 0}</li>
+            <li><b>Объем закупок:</b> {forecast_df['Рекомендация по закупке'].sum():.2f} ед.</li>
+        </ul>
+        </div>
+
+        <hr style='border: 2px solid {NornikColors.PRIMARY_BLUE}; margin: 30px 0;'>
+
+        <div style='background-color: #fffef0; padding: 20px; border-radius: 10px; border-left: 5px solid {NornikColors.ACCENT_ORANGE};'>
+        <h3 style='color: {NornikColors.ACCENT_ORANGE}; margin-top: 0;'>📄 Файлы с результатами:</h3>
+        <p style='font-size: 14px; line-height: 1.8;'>
+        При сохранении будут созданы:<br>
+        • <b>Excel файл</b> - таблицы со всеми данными и расчетами<br>
+        • <b>Исторический_анализ.md</b> - подробные пояснения расчетов исторических метрик<br>
+        • <b>Прогноз_закупки.md</b> - подробные пояснения расчетов прогноза<br>
         </p>
-        """
+        </div>
 
-        self.results_label.setText(summary)
+        <p style='color: white; background-color: {NornikColors.SUCCESS}; font-weight: bold; font-size: 16px; text-align: center; padding: 15px; border-radius: 10px; margin-top: 30px;'>
+        ✅ Анализ завершен! Нажмите "💾 Сохранить в Excel" для экспорта результатов
+        </p>
+            """
+            logger.info("✓ HTML сводка сформирована")
+
+            logger.info("Установка текста в QLabel...")
+            self.results_label.setText(summary)
+            logger.info("✓ Результаты отображены в UI")
+
+        except Exception as e:
+            logger.error(f"Ошибка при отображении результатов: {e}")
+            logger.error(traceback.format_exc())
+
+            # Показать минимальную версию
+            try:
+                simple_summary = f"""
+                <h2 style='color: {NornikColors.PRIMARY_BLUE};'>📊 Результаты анализа запасов</h2>
+
+                <p style='font-size: 16px;'><b>✅ Анализ завершен успешно!</b></p>
+
+                <p style='color: {NornikColors.SUCCESS}; font-weight: bold; font-size: 14px;'>
+                Нажмите "💾 Сохранить в Excel" для просмотра результатов
+                </p>
+                """
+                self.results_label.setText(simple_summary)
+                logger.info("✓ Показана минимальная версия результатов")
+            except Exception as e2:
+                logger.error(f"Критическая ошибка отображения: {e2}")
+                logger.error(traceback.format_exc())
 
     def export_results(self):
         """Экспортировать результаты в Excel"""

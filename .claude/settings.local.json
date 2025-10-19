@@ -1,17 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python scripts/test_imports_simple.py)",
-      "Bash(isort --check-only --diff src/ tests/ scripts/)",
-      "Bash(flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics)",
-      "Bash(python -c \"import sys; sys.path.insert(0, ''.''); from src.web import app; print(''[OK] Web app imports work'')\")",
-      "Bash(python scripts/build_exe.py)",
-      "Bash(tee build_log.txt)",
-      "Bash(dir distNornickel_Inventory_Analysis.exe)",
-      "Bash(powershell -Command \"Get-Item ''dist\\Nornickel_Inventory_Analysis.exe'' | Select-Object Name, Length, LastWriteTime\")",
-      "Bash(tee build_log_with_logging.txt)",
-      "Bash(taskkill /F /IM Nornickel_Inventory_Analysis.exe)",
-      "Bash(powershell -Command \"Get-Process | Where-Object {$_ProcessName -like ''*Nornickel*''} | Stop-Process -Force\")"
+      "Read(//c/Users/Mih10/**)",
+      "Bash(md5sum dist/Nornickel_Inventory_Analysis.exe)"
     ],
     "deny": [],
     "ask": []
