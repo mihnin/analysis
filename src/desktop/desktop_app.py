@@ -20,29 +20,53 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QScrollArea, QFileDialog, QMessageBox, QLabel, QSpinBox,
-    QDoubleSpinBox, QComboBox, QRadioButton, QButtonGroup, QGroupBox
+    QDoubleSpinBox, QComboBox, QRadioButton, QButtonGroup, QGroupBox, QCheckBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSettings
 from PyQt6.QtGui import QIcon
 
-# Настройка логирования
+# Глобальная переменная для логгера и лог файла
 log_file = Path.home() / 'Nornickel_Inventory_Analysis.log'
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file, encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-logger.info("="*80)
-logger.info("ЗАПУСК ПРИЛОЖЕНИЯ")
-logger.info(f"Файл логов: {log_file}")
-logger.info(f"Python версия: {sys.version}")
-logger.info(f"Рабочая директория: {os.getcwd()}")
-logger.info(f"Root директория: {root_dir}")
-logger.info("="*80)
+
+def setup_logging(enable_logging=True):
+    """Настройка логирования с учетом пользовательских настроек"""
+    global logger
+
+    if enable_logging:
+        # Удаляем старый лог файл при запуске (если включено логирование)
+        if log_file.exists():
+            try:
+                log_file.unlink()
+            except Exception as e:
+                print(f"Не удалось удалить старый лог: {e}")
+
+        # Настраиваем логирование
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                logging.StreamHandler()
+            ],
+            force=True  # Переопределить существующую конфигурацию
+        )
+        logger = logging.getLogger(__name__)
+        logger.disabled = False
+        logger.info("="*80)
+        logger.info("ЗАПУСК ПРИЛОЖЕНИЯ")
+        logger.info(f"Файл логов: {log_file}")
+        logger.info(f"Python версия: {sys.version}")
+        logger.info(f"Рабочая директория: {os.getcwd()}")
+        logger.info(f"Root директория: {root_dir}")
+        logger.info("="*80)
+    else:
+        # Логирование отключено - отключаем логгер
+        logging.basicConfig(level=logging.CRITICAL, force=True)
+        logger = logging.getLogger(__name__)
+        logger.disabled = True
+
+# Инициализируем логирование (по умолчанию включено)
+setup_logging(enable_logging=True)
 
 # Импорт наших модулей
 logger.info("Импорт модулей UI...")
@@ -51,6 +75,14 @@ from src.desktop.desktop_ui_components import *
 from src.desktop.file_validation import *
 from src.desktop.excel_export_desktop import export_full_report
 from src.utils.utils import auto_detect_columns
+from src.desktop.help_content import (
+    get_help_general,
+    get_help_data_structure,
+    get_help_interface,
+    get_help_models,
+    get_help_parameters,
+    get_help_forecast_modes
+)
 logger.info("✓ Модули UI импортированы")
 
 # Импорт логики анализа из существующих модулей
@@ -355,7 +387,10 @@ class AnalysisWorker(QThread):
                 'Прогноз остатка на конец',
                 'Рекомендация по закупке',
                 'Будущий спрос',
-                'Страховой запас'
+                'Страховой запас',
+                forecast_mode=forecast_mode,
+                forecast_model=self.config.get('forecast_model', 'auto') if forecast_mode == 'auto' else None,
+                forecast_periods=self.config.get('forecast_periods', 12) if forecast_mode == 'auto' else None
             )
             logger.info(f"✓ get_forecast_explanation() выполнена успешно")
 
@@ -386,6 +421,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        # Загружаем настройки
+        self.settings = QSettings('Nornickel', 'InventoryAnalysis')
+
         # Данные
         self.historical_file = None
         self.forecast_file = None
@@ -393,6 +431,13 @@ class MainWindow(QMainWindow):
 
         # UI
         self.init_ui()
+
+        # Устанавливаем состояние чекбокса из настроек
+        enable_logging = self.settings.value('enable_logging', True, type=bool)
+        self.enable_logging_checkbox.setChecked(enable_logging)
+
+        # Подключаем обработчик изменения чекбокса
+        self.enable_logging_checkbox.stateChanged.connect(self.on_logging_checkbox_changed)
 
     def init_ui(self):
         """Инициализация интерфейса"""
@@ -658,6 +703,27 @@ class MainWindow(QMainWindow):
         lead_time_caption = NornikCaptionLabel("Для расчета точки перезаказа (ROP)")
         lead_time_layout.addWidget(lead_time_caption)
         col2_layout.addLayout(lead_time_layout)
+
+        col2_layout.addSpacing(NornikMetrics.PADDING_MEDIUM)
+
+        # Чекбокс логирования
+        logging_layout = QVBoxLayout()
+        self.enable_logging_checkbox = QCheckBox("☑️ Вести лог выполнения")
+        self.enable_logging_checkbox.setChecked(True)  # По умолчанию включено
+        self.enable_logging_checkbox.setStyleSheet(f"""
+            QCheckBox {{
+                font-size: {NornikFonts.SIZE_BODY}px;
+                color: {NornikColors.TEXT_PRIMARY};
+            }}
+            QCheckBox::indicator {{
+                width: 20px;
+                height: 20px;
+            }}
+        """)
+        logging_layout.addWidget(self.enable_logging_checkbox)
+        logging_caption = NornikCaptionLabel("При включении лог удаляется при каждом запуске приложения")
+        logging_layout.addWidget(logging_caption)
+        col2_layout.addLayout(logging_layout)
 
         params_layout.addLayout(col2_layout, 1)
 
@@ -1008,28 +1074,42 @@ class MainWindow(QMainWindow):
                     explanation_forecast=None  # Не включаем в Excel
                 )
 
-                # 3. Копируем лог-файл в ту же папку
-                logger.info("Копирование лог-файла...")
-                import shutil
-                log_source = Path.home() / 'Nornickel_Inventory_Analysis.log'
-                log_dest = output_dir / f"{base_name}_Лог_выполнения.log"
+                # 3. Копируем лог-файл в ту же папку (только если логирование включено)
+                enable_logging = self.settings.value('enable_logging', True, type=bool)
+                if enable_logging:
+                    logger.info("Копирование лог-файла...")
+                    import shutil
+                    log_source = Path.home() / 'Nornickel_Inventory_Analysis.log'
+                    log_dest = output_dir / f"{base_name}_Лог_выполнения.log"
 
-                if log_source.exists():
-                    shutil.copy2(log_source, log_dest)
-                    logger.info(f"✓ Лог скопирован: {log_dest}")
+                    if log_source.exists():
+                        shutil.copy2(log_source, log_dest)
+                        logger.info(f"✓ Лог скопирован: {log_dest}")
+                    else:
+                        logger.warning(f"Лог-файл не найден: {log_source}")
                 else:
-                    logger.warning(f"Лог-файл не найден: {log_source}")
+                    logger.info("Логирование отключено - лог файл НЕ копируется")
 
                 if success:
                     logger.info("✓ Экспорт завершен успешно")
-                    show_message_box(
-                        self,
-                        "Успех",
+
+                    # Формируем сообщение в зависимости от того, включено ли логирование
+                    message = (
                         f"Результаты успешно сохранены:\n\n"
                         f"📊 Excel: {Path(file_path).name}\n"
                         f"📄 Пояснения (исторический): {hist_md_path.name}\n"
-                        f"📄 Пояснения (прогноз): {forecast_md_path.name}\n"
-                        f"📋 Лог выполнения: {log_dest.name}",
+                        f"📄 Пояснения (прогноз): {forecast_md_path.name}"
+                    )
+
+                    if enable_logging:
+                        message += f"\n📋 Лог выполнения: {log_dest.name}"
+                    else:
+                        message += f"\n\n💡 Лог выполнения НЕ сохранён (отключено в настройках)"
+
+                    show_message_box(
+                        self,
+                        "Успех",
+                        message,
                         "success"
                     )
                 else:
@@ -1051,208 +1131,97 @@ class MainWindow(QMainWindow):
                 )
 
     def show_help(self):
-        """Показать справку"""
-        help_text = """
-        <h2 style='color: #0077C8;'>Справка по использованию</h2>
+        """Показать справку в отдельном окне с вкладками"""
+        from PyQt6.QtWidgets import QDialog, QTabWidget, QTextBrowser, QVBoxLayout
+        from PyQt6.QtCore import QSize
 
-        <h3>Порядок работы:</h3>
-        <ol>
-            <li><b>Загрузите исторические данные</b> - Excel файл с остатками материалов</li>
-            <li><b>Выберите режим прогнозирования:</b>
-                <ul>
-                    <li>Загрузите готовый прогноз ИЛИ</li>
-                    <li>Используйте автоматический прогноз (рекомендуется)</li>
-                </ul>
-            </li>
-            <li><b>Настройте параметры</b> (опционально)</li>
-            <li><b>Нажмите "Выполнить анализ"</b></li>
-            <li><b>Сохраните результаты в Excel</b></li>
-        </ol>
+        # Создаем диалоговое окно
+        dialog = QDialog(self)
+        dialog.setWindowTitle("📖 Справка по использованию")
+        dialog.setMinimumSize(QSize(900, 700))  # Адаптивный размер
 
-        <h3>📊 СТРУКТУРА ФАЙЛА ИСТОРИЧЕСКИХ ДАННЫХ:</h3>
+        # Создаем вкладки
+        tabs = QTabWidget()
+        tabs.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: 2px solid {NornikColors.PRIMARY_BLUE};
+                border-radius: 5px;
+            }}
+            QTabBar::tab {{
+                background: {NornikColors.LIGHT_GRAY};
+                padding: 10px 20px;
+                margin-right: 2px;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+            }}
+            QTabBar::tab:selected {{
+                background: {NornikColors.PRIMARY_BLUE};
+                color: white;
+            }}
+        """)
 
-        <h4 style='color: #004C97;'>✅ Обязательные колонки:</h4>
-        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
-            <tr style='background-color: #004C97; color: white;'>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Дата</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Дата, Date, Период, Month, Месяц</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Дата (ГГГГ-ММ-ДД)</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Материал</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Материал, Material, Товар, Артикул, SKU, Item</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Начальный остаток</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Начальный остаток, Start Balance, Остаток на начало</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Конечный остаток</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Конечный остаток, End Balance, Остаток на конец</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
-            </tr>
-        </table>
+        # Вкладка 1: Общая информация
+        tab1 = QTextBrowser()
+        tab1.setHtml(get_help_general())
+        tabs.addTab(tab1, "📋 Общая информация")
 
-        <h4 style='color: #0077C8;'>⭐ Рекомендуемые колонки (для точного анализа):</h4>
-        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
-            <tr style='background-color: #0077C8; color: white;'>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Филиал</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Филиал, Branch, Склад, Warehouse, Подразделение</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Потребление</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Потребление, Consumption, Расход, Usage, Использование</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Стоимость</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Стоимость, Cost, Цена, Price, Стоимость конечная</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
-            </tr>
-        </table>
+        # Вкладка 2: Структура данных
+        tab2 = QTextBrowser()
+        tab2.setHtml(get_help_data_structure())
+        tabs.addTab(tab2, "📊 Структура данных")
 
-        <h4 style='color: #FF9800;'>⚠️ Важно:</h4>
-        <ul>
-            <li>Формат файла: <b>.xlsx</b> или <b>.xls</b></li>
-            <li>Даты должны быть в <b>формате даты</b> (не текст!)</li>
-            <li>Числа должны быть в <b>числовом формате</b> (не текст!)</li>
-            <li>Минимум данных: <b>6-12 месяцев истории</b></li>
-            <li>Рекомендуется: <b>12-24 месяца</b> для точного прогноза</li>
-        </ul>
+        # Вкладка 3: Элементы интерфейса
+        tab3 = QTextBrowser()
+        tab3.setHtml(get_help_interface())
+        tabs.addTab(tab3, "🖥️ Интерфейс")
 
-        <h3>📈 СТРУКТУРА ФАЙЛА ПРОГНОЗНЫХ ДАННЫХ (опционально):</h3>
+        # Вкладка 4: Модели прогнозирования
+        tab4 = QTextBrowser()
+        tab4.setHtml(get_help_models())
+        tabs.addTab(tab4, "🤖 Модели")
 
-        <h4 style='color: #004C97;'>✅ Обязательные колонки:</h4>
-        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
-            <tr style='background-color: #004C97; color: white;'>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Колонка</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Варианты названий</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Формат</th>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Дата</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Дата, Date, Период</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Дата (ГГГГ-ММ-ДД)</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Материал</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Материал, Material, Товар</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Текст</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>Плановый спрос</b></td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Плановый спрос, Demand, Forecast, Прогноз, План</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Число</td>
-            </tr>
-        </table>
+        # Вкладка 5: Параметры анализа
+        tab5 = QTextBrowser()
+        tab5.setHtml(get_help_parameters())
+        tabs.addTab(tab5, "⚙️ Параметры")
 
-        <p style='background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
-        <b>💡 Совет:</b> Вместо загрузки прогнозного файла используйте режим
-        <b>"Автоматический прогноз"</b> - система сама сгенерирует прогноз на основе исторических данных!
-        </p>
+        # Вкладка 6: Режимы прогнозирования и входные данные
+        tab6 = QTextBrowser()
+        tab6.setHtml(get_help_forecast_modes())
+        tabs.addTab(tab6, "🔮 Режимы прогноза")
 
-        <h3>📞 Техническая поддержка:</h3>
-        <p>При возникновении вопросов обратитесь в службу технической поддержки Норникель Спутник.</p>
+        # Компоновка
+        layout = QVBoxLayout()
+        layout.addWidget(tabs)
+        dialog.setLayout(layout)
 
-        <h3>📁 Шаблоны файлов:</h3>
-        <p>Примеры правильно оформленных файлов находятся в папке: <br>
-        <code>C:\\dev\\analysis\\datasets\\</code></p>
+        # Показываем модальное окно
+        dialog.exec()
 
-        <h4 style='color: #004C97;'>Два готовых шаблона на выбор:</h4>
+    def on_logging_checkbox_changed(self, state):
+        """Обработчик изменения состояния чекбокса логирования"""
+        # Сохраняем новое состояние в настройки
+        is_checked = (state == Qt.CheckState.Checked)
+        self.settings.setValue('enable_logging', is_checked)
 
-        <table style='width: 100%; border-collapse: collapse; margin: 10px 0;'>
-            <tr style='background-color: #004C97; color: white;'>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Шаблон</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Колонок</th>
-                <th style='padding: 8px; border: 1px solid #ddd;'>Когда использовать</th>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>historical_data_template.xlsx</b><br>(упрощенный)</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>7</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Нет данных о поступлениях и ценах.<br>Все 7 колонок используются приложением.</td>
-            </tr>
-            <tr>
-                <td style='padding: 8px; border: 1px solid #ddd;'><b>historical_data_correct_template.xlsx</b><br>(полный) ⭐</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>9</td>
-                <td style='padding: 8px; border: 1px solid #ddd;'>Есть данные о поступлениях и ценах.<br>7 колонок используются приложением,<br>2 колонки (Поступление, Цена) - для прозрачности.</td>
-            </tr>
-        </table>
-
-        <h4 style='color: #FF9800;'>⚡ ВАЖНО: Какие поля обязательны?</h4>
-
-        <p style='background-color: #FFF3E0; padding: 10px; border-radius: 5px; border-left: 4px solid #FF9800;'>
-        <b>Минимум для работы (4 поля):</b><br>
-        ✅ Дата<br>
-        ✅ Материал<br>
-        ✅ Начальный остаток<br>
-        ✅ Конечный остаток<br>
-        <br>
-        <b>Крайне рекомендуется (1 поле):</b><br>
-        ⭐⭐⭐ <b>Потребление</b> - БЕЗ этого поля прогноз будет менее точным!<br>
-        <br>
-        <b>Рекомендуется (2 поля):</b><br>
-        ⭐ Филиал - для анализа по складам<br>
-        ⭐ Конечная стоимость - для расчета opportunity cost<br>
-        <br>
-        <b>Дополнительно (не используются приложением):</b><br>
-        📊 Поступление - для балансового уравнения (только в полном шаблоне)<br>
-        📊 Цена за единицу - для расчета стоимости (только в полном шаблоне)
-        </p>
-
-        <h4 style='color: #4CAF50;'>✅ Упрощенный шаблон (7 колонок):</h4>
-        <p style='font-family: monospace; background-color: #E8F5E9; padding: 10px; border-radius: 5px;'>
-        1. Дата ✅<br>
-        2. Филиал ⭐<br>
-        3. Материал ✅<br>
-        4. Начальный остаток ✅<br>
-        5. Конечный остаток ✅<br>
-        6. Потребление ⭐⭐⭐<br>
-        7. Конечная стоимость ⭐
-        </p>
-        <p><b>Все 7 колонок используются приложением!</b></p>
-
-        <h4 style='color: #2196F3;'>⭐ Полный шаблон (9 колонок):</h4>
-        <p style='font-family: monospace; background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
-        1. Дата ✅<br>
-        2. Филиал ⭐<br>
-        3. Материал ✅<br>
-        4. Начальный остаток ✅<br>
-        5. <b>Поступление 📊</b> (не используется приложением - для прозрачности)<br>
-        6. Потребление ⭐⭐⭐<br>
-        7. Конечный остаток ✅<br>
-        8. <b>Цена за единицу 📊</b> (не используется приложением - для расчетов в Excel)<br>
-        9. Конечная стоимость ⭐
-        </p>
-        <p><b>7 из 9 колонок используются приложением!</b><br>
-        2 дополнительные колонки для полноты данных и балансового уравнения:<br>
-        <code>Конечный остаток = Начальный остаток + Поступление - Потребление</code></p>
-
-        <p style='background-color: #E3F2FD; padding: 10px; border-radius: 5px;'>
-        <b>💡 Вывод:</b> Оба шаблона корректно работают с приложением!<br>
-        Используйте <b>упрощенный</b> (7 колонок) для большинства случаев.<br>
-        Используйте <b>полный</b> (9 колонок) если хотите видеть балансовое уравнение.
-        </p>
-        """
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Справка")
-        msg.setTextFormat(Qt.TextFormat.RichText)
-        msg.setText(help_text)
-        msg.setStyleSheet(get_message_box_style("info"))
-        msg.exec()
+        # Информируем пользователя
+        if is_checked:
+            QMessageBox.information(
+                self,
+                "Логирование включено",
+                "Логирование включено.\n\n"
+                "При следующем запуске приложения старый лог будет удален "
+                "и начнется новая запись логов в файл:\n"
+                f"{log_file}"
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Логирование отключено",
+                "Логирование отключено.\n\n"
+                "При следующем запуске приложения логирование будет отключено. "
+                "Лог файл не будет создаваться."
+            )
 
 
 def main():
@@ -1262,6 +1231,11 @@ def main():
     # Настройки приложения
     app.setApplicationName("Норникель Спутник - Анализ запасов")
     app.setOrganizationName("Норникель Спутник")
+
+    # Загружаем настройки пользователя и настраиваем логирование
+    settings = QSettings('Nornickel', 'InventoryAnalysis')
+    enable_logging = settings.value('enable_logging', True, type=bool)
+    setup_logging(enable_logging=enable_logging)
 
     # Применить глобальные стили
     app.setStyleSheet(get_scrollbar_style())
