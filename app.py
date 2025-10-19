@@ -195,7 +195,44 @@ def main():
 
     # Загрузка прогнозируемых данных
     st.header("Загрузка прогнозируемых данных")
-    forecast_file = st.file_uploader("Выберите Excel фай с прогнозируемыми данными", type=["xlsx"], key="forecast_uploader")
+
+    # НОВАЯ ОПЦИЯ: Автоматическое прогнозирование спроса
+    auto_forecast_enabled = st.checkbox(
+        "🤖 Автоматически спрогнозировать спрос на основе исторических данных",
+        value=False,
+        help="Если отмечено, приложение автоматически спрогнозирует спрос используя модели временных рядов. Иначе загрузите файл с вашим прогнозом."
+    )
+
+    if auto_forecast_enabled:
+        if st.session_state.historical_df is not None and consumption_column is not None:
+            st.info("ℹ️ Спрос будет автоматически спрогнозирован на основе исторических данных списания")
+
+            # Параметры автоматического прогнозирования
+            forecast_periods = st.number_input(
+                "Количество периодов для прогноза",
+                min_value=1,
+                max_value=24,
+                value=12,
+                step=1,
+                help="На сколько периодов вперед прогнозировать (месяцев)"
+            )
+
+            demand_forecast_model = st.selectbox(
+                "Модель прогнозирования спроса",
+                ['auto', 'moving_average', 'exponential_smoothing', 'holt_winters', 'sarima'],
+                index=0,
+                help="AUTO - автоматический выбор лучшей модели на основе исторических данных"
+            )
+        else:
+            st.warning("⚠️ Для автоматического прогнозирования необходимо:\n1. Загрузить исторические данные\n2. Указать колонку с фактическим списанием")
+            auto_forecast_enabled = False
+
+    forecast_file = st.file_uploader(
+        "Выберите Excel файл с прогнозируемыми данными" if not auto_forecast_enabled else "Или загрузите свой файл с прогнозом (опционально)",
+        type=["xlsx"],
+        key="forecast_uploader",
+        disabled=auto_forecast_enabled
+    )
 
     if forecast_file is not None and st.session_state.get("forecast_df") is None:
         st.session_state.forecast_df = pd.read_excel(forecast_file)
@@ -228,16 +265,63 @@ def main():
         if selected_forecast_branches:
             st.session_state.forecast_df = st.session_state.forecast_df[st.session_state.forecast_df[forecast_branch_column].isin(selected_forecast_branches)].reset_index(drop=True)
 
-        # нализ прогнозируемых данных
+    # НАСТРОЙКИ МОДЕЛЕЙ ПРОГНОЗИРОВАНИЯ
+    with st.expander("⚙️ Дополнительные настройки прогнозирования (опционально)"):
+        st.write("**Модель прогнозирования начальных остатков:**")
+        balance_forecast_model = st.selectbox(
+            "Выберите модель для прогноза остатков",
+            ['naive', 'moving_average', 'exponential_smoothing', 'holt_winters', 'auto'],
+            index=0,
+            help="""
+            - NAIVE: Просто использует последнее известное значение (быстро, базовый вариант)
+            - MOVING AVERAGE: Среднее за последние периоды (сглаженный прогноз)
+            - EXPONENTIAL SMOOTHING: Адаптивное сглаживание (больше веса свежим данным)
+            - HOLT-WINTERS: Учитывает тренд и сезонность (рекомендуется для месячных данных)
+            - AUTO: Автоматически выбирает лучшую модель
+            """
+        )
+
+    # Кнопка анализа прогнозируемых данных
+    if (auto_forecast_enabled or st.session_state.forecast_df is not None):
         if st.button("Провести анализ прогнозируемых данных"):
             try:
                 if st.session_state.historical_df is None:
                     st.error("Пожалуйста, загрузите и проанализируйте исторические данные перед анализом прогноза.")
                 else:
+                    # АВТОМАТИЧЕСКОЕ ПРОГНОЗИРОВАНИЕ СПРОСА (если включено)
+                    if auto_forecast_enabled:
+                        st.info(f"🤖 Генерация прогноза спроса на {forecast_periods} периодов используя модель {demand_forecast_model.upper()}...")
+                        st.session_state.forecast_df = fa.auto_forecast_demand(
+                            st.session_state.historical_df,
+                            forecast_periods,
+                            date_column,
+                            material_column,
+                            branch_column,
+                            consumption_column,
+                            forecast_model=demand_forecast_model,
+                            seasonal_periods=12
+                        )
+                        # Устанавливаем имена колонок для дальнейшей работы
+                        forecast_date_column = date_column
+                        forecast_material_column = material_column
+                        forecast_branch_column = branch_column
+                        forecast_quantity_column = 'Запланированная потребность'
+
                     # Прогноз остатков на основе исторических данных
-                    st.session_state.forecast_df['Прогноз остатка на начало'] = fa.forecast_start_balance(st.session_state.historical_df, st.session_state.forecast_df, 
-                                                                                          date_column, material_column, branch_column, end_quantity_column,
-                                                                                          forecast_date_column, forecast_material_column, forecast_branch_column)
+                    st.info(f"📊 Прогнозирование начальных остатков используя модель {balance_forecast_model.upper()}...")
+                    st.session_state.forecast_df['Прогноз остатка на начало'] = fa.forecast_start_balance(
+                        st.session_state.historical_df,
+                        st.session_state.forecast_df,
+                        date_column,
+                        material_column,
+                        branch_column,
+                        end_quantity_column,
+                        forecast_date_column,
+                        forecast_material_column,
+                        forecast_branch_column,
+                        forecast_model=balance_forecast_model,
+                        seasonal_periods=12
+                    )
                     
                     # Расчет прогнозируемого остатка на конец
                     st.session_state.forecast_df['Прогноз остатка на конец'] = st.session_state.forecast_df['Прогноз остатка на начало'] - st.session_state.forecast_df[forecast_quantity_column]

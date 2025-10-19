@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import plotly.express as px
+import forecasting_models as fm
 
 def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column,
                           start_balance_column, end_balance_column, recommendation_column,
@@ -83,15 +84,135 @@ def get_explanation(row, date_column, material_column, branch_column, demand_col
     return explanation
 
 def forecast_start_balance(historical_df, forecast_df, date_column, material_column, branch_column, end_quantity_column,
-                           forecast_date_column, forecast_material_column, forecast_branch_column):
-    last_historical_date = historical_df[date_column].max()
-    last_balances = historical_df[historical_df[date_column] == last_historical_date][[branch_column, material_column, end_quantity_column]]
-    
-    forecast_start_balances = forecast_df.merge(last_balances, 
-                                                left_on=[forecast_branch_column, forecast_material_column],
-                                                right_on=[branch_column, material_column],
-                                                how='left')[end_quantity_column]
-    return forecast_start_balances
+                           forecast_date_column, forecast_material_column, forecast_branch_column,
+                           forecast_model='naive', seasonal_periods=12):
+    """
+    Прогнозирует начальные остатки с использованием моделей прогнозирования
+
+    Parameters:
+    -----------
+    forecast_model : str
+        Модель прогнозирования: 'naive', 'moving_average', 'exponential_smoothing',
+        'holt_winters', 'sarima', 'auto' (по умолчанию 'naive')
+    seasonal_periods : int
+        Длина сезонного цикла для моделей с сезонностью (по умолчанию 12 для месячных данных)
+
+    Returns:
+    --------
+    pd.Series: Прогнозированные начальные остатки
+    """
+    forecast_start_balances = []
+
+    for _, forecast_row in forecast_df.iterrows():
+        material = forecast_row[forecast_material_column]
+        branch = forecast_row[forecast_branch_column]
+
+        # Получаем исторические данные для данного материала/филиала
+        historical_series = historical_df[
+            (historical_df[material_column] == material) &
+            (historical_df[branch_column] == branch)
+        ].sort_values(date_column)[end_quantity_column]
+
+        if len(historical_series) == 0:
+            # Нет исторических данных - используем 0
+            forecast_start_balances.append(0)
+        elif forecast_model == 'naive' or len(historical_series) < 3:
+            # Naive forecast или слишком мало данных
+            forecast_start_balances.append(historical_series.iloc[-1])
+        else:
+            # Используем модели прогнозирования
+            try:
+                result = fm.forecast_demand(
+                    historical_series,
+                    horizon=1,
+                    model=forecast_model,
+                    seasonal_periods=seasonal_periods
+                )
+                forecast_start_balances.append(result['forecast'][0])
+            except Exception as e:
+                # В случае ошибки fallback на naive
+                forecast_start_balances.append(historical_series.iloc[-1])
+
+    return pd.Series(forecast_start_balances, index=forecast_df.index)
+
+def auto_forecast_demand(historical_df, forecast_periods, date_column, material_column,
+                         branch_column, consumption_column, forecast_model='auto',
+                         seasonal_periods=12):
+    """
+    Автоматически прогнозирует спрос на основе исторических данных
+
+    Parameters:
+    -----------
+    historical_df : pd.DataFrame
+        Исторические данные
+    forecast_periods : int
+        Количество периодов для прогноза
+    consumption_column : str
+        Колонка с фактическим потреблением/списанием
+    forecast_model : str
+        Модель прогнозирования: 'auto', 'naive', 'moving_average',
+        'exponential_smoothing', 'holt_winters', 'sarima'
+    seasonal_periods : int
+        Длина сезонного цикла (12 для месячных данных)
+
+    Returns:
+    --------
+    pd.DataFrame: Прогнозные данные с колонками [date, material, branch, forecasted_demand]
+    """
+    forecast_results = []
+
+    # Получаем уникальные комбинации материал/филиал
+    groups = historical_df.groupby([material_column, branch_column])
+
+    # Определяем частоту данных (месячные, недельные и т.д.)
+    historical_df[date_column] = pd.to_datetime(historical_df[date_column])
+    date_freq = pd.infer_freq(historical_df[date_column].sort_values().unique())
+    if date_freq is None:
+        date_freq = 'MS'  # По умолчанию месячная частота
+
+    for (material, branch), group in groups:
+        # Сортируем по дате
+        group = group.sort_values(date_column)
+
+        # Получаем временной ряд потребления
+        consumption_series = group[consumption_column]
+
+        if len(consumption_series) < 3:
+            # Слишком мало данных - используем naive forecast
+            forecasted_values = [consumption_series.iloc[-1]] * forecast_periods
+        else:
+            # Используем выбранную модель
+            try:
+                result = fm.forecast_demand(
+                    consumption_series,
+                    horizon=forecast_periods,
+                    model=forecast_model,
+                    seasonal_periods=seasonal_periods
+                )
+                forecasted_values = result['forecast']
+            except Exception as e:
+                # Fallback на naive
+                forecasted_values = [consumption_series.iloc[-1]] * forecast_periods
+
+        # Генерируем будущие даты
+        last_date = group[date_column].max()
+        future_dates = pd.date_range(
+            start=last_date + pd.DateOffset(months=1 if date_freq == 'MS' else 7),
+            periods=forecast_periods,
+            freq=date_freq
+        )
+
+        # Создаем записи прогноза
+        for date, demand in zip(future_dates, forecasted_values):
+            forecast_results.append({
+                date_column: date,
+                material_column: material,
+                branch_column: branch,
+                'Запланированная потребность': max(0, demand)  # Не допускаем отрицательные значения
+            })
+
+    return pd.DataFrame(forecast_results)
+
 
 def calculate_forward_rolling_sum(series, window=3):
     """

@@ -8,7 +8,9 @@
       "Bash(python -m pytest test_historical_analysis.py test_forecast_analysis.py -v)",
       "Bash(python business_logic_review.py)",
       "Bash(python test_new_features.py)",
-      "Bash(python test_consumption_conventions.py)"
+      "Bash(python test_consumption_conventions.py)",
+      "Bash(python analyze_forecasting_models.py)",
+      "Bash(python test_forecasting_models.py)"
     ],
     "deny": [],
     "ask": []
