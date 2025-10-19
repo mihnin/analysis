@@ -1008,15 +1008,28 @@ class MainWindow(QMainWindow):
                     explanation_forecast=None  # Не включаем в Excel
                 )
 
+                # 3. Копируем лог-файл в ту же папку
+                logger.info("Копирование лог-файла...")
+                import shutil
+                log_source = Path.home() / 'Nornickel_Inventory_Analysis.log'
+                log_dest = output_dir / f"{base_name}_Лог_выполнения.log"
+
+                if log_source.exists():
+                    shutil.copy2(log_source, log_dest)
+                    logger.info(f"✓ Лог скопирован: {log_dest}")
+                else:
+                    logger.warning(f"Лог-файл не найден: {log_source}")
+
                 if success:
                     logger.info("✓ Экспорт завершен успешно")
                     show_message_box(
                         self,
                         "Успех",
                         f"Результаты успешно сохранены:\n\n"
-                        f"📊 Excel: {file_path}\n"
+                        f"📊 Excel: {Path(file_path).name}\n"
                         f"📄 Пояснения (исторический): {hist_md_path.name}\n"
-                        f"📄 Пояснения (прогноз): {forecast_md_path.name}",
+                        f"📄 Пояснения (прогноз): {forecast_md_path.name}\n"
+                        f"📋 Лог выполнения: {log_dest.name}",
                         "success"
                     )
                 else:
