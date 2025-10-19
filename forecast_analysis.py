@@ -3,27 +3,24 @@ import numpy as np
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import plotly.express as px
 
-def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column, 
-                          start_balance_column, end_balance_column, recommendation_column, 
+def analyze_forecast_data(df, date_column, material_column, branch_column, demand_column,
+                          start_balance_column, end_balance_column, recommendation_column,
                           future_demand_column, safety_stock_column):
     analysis_df = df.copy()
-    numeric_columns = [demand_column, start_balance_column, end_balance_column, 
+    numeric_columns = [demand_column, start_balance_column, end_balance_column,
                        recommendation_column, future_demand_column, safety_stock_column]
     analysis_df[numeric_columns] = analysis_df[numeric_columns].round(1)
     analysis_df = analysis_df.sort_values([date_column, material_column, branch_column])
-    
-    # Добавляем расчет прогнозируемой потребности с использованием модели Exponential Smoothing
-    for material in analysis_df[material_column].unique():
-        for branch in analysis_df[branch_column].unique():
-            material_branch_data = analysis_df[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch)]
-            if len(material_branch_data) > 2:
-                model = ExponentialSmoothing(material_branch_data[demand_column], trend='add', seasonal=None).fit()
-                analysis_df.loc[(analysis_df[material_column] == material) & (analysis_df[branch_column] == branch), demand_column] = model.fittedvalues.round(1)
-    
-    explanation = get_explanation(analysis_df.iloc[0], date_column, material_column, branch_column, 
-                                  demand_column, start_balance_column, end_balance_column, 
+
+    # ИСПРАВЛЕНИЕ ОШИБКИ #3: УДАЛЕНО применение Exponential Smoothing
+    # Причина: Перезапись запланированной потребности некорректна и происходит
+    # ПОСЛЕ всех расчетов, что делает предыдущие расчеты бессмысленными.
+    # Если нужно сглаживание для визуализации, создайте отдельную колонку.
+
+    explanation = get_explanation(analysis_df.iloc[0], date_column, material_column, branch_column,
+                                  demand_column, start_balance_column, end_balance_column,
                                   recommendation_column, future_demand_column, safety_stock_column)
-    
+
     return analysis_df, explanation
 
 def get_explanation(row, date_column, material_column, branch_column, demand_column, 
@@ -96,11 +93,28 @@ def forecast_start_balance(historical_df, forecast_df, date_column, material_col
                                                 how='left')[end_quantity_column]
     return forecast_start_balances
 
+def calculate_forward_rolling_sum(series, window=3):
+    """
+    Вычисляет rolling sum ВПЕРЕД (текущий + следующие периоды)
+    вместо стандартного rolling (текущий + предыдущие периоды)
+    """
+    result = []
+    for i in range(len(series)):
+        # Суммируем от текущего до текущего+window (не включая)
+        window_sum = series.iloc[i:min(i+window, len(series))].sum()
+        result.append(window_sum)
+    return pd.Series(result, index=series.index)
+
+
 def calculate_purchase_recommendations(df, end_quantity_column, forecast_quantity_column, safety_stock_percent):
     safety_stock = df[forecast_quantity_column] * safety_stock_percent
-    future_demand = df[forecast_quantity_column].rolling(window=3, min_periods=1).sum()
+
+    # ИСПРАВЛЕНИЕ ОШИБКИ #2: Используем forward rolling sum (текущий + 2 следующих)
+    # вместо backward rolling sum (текущий + 2 предыдущих)
+    future_demand = calculate_forward_rolling_sum(df[forecast_quantity_column], window=3)
+
     recommendations = np.maximum(0, future_demand + safety_stock - df[end_quantity_column])
-    
+
     return pd.DataFrame({
         'Рекомендация по закупке': recommendations,
         'Будущий спрос': future_demand,

@@ -3,23 +3,27 @@ import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 from scipy import stats
 
-def analyze_historical_data(df, date_column, branch_column, material_column, start_quantity_column, end_quantity_column, end_cost_column, interest_rate):
+def analyze_historical_data(df, date_column, branch_column, material_column, start_quantity_column, end_quantity_column, end_cost_column, interest_rate, consumption_column=None):
     df[date_column] = pd.to_datetime(df[date_column])
     results = []
     unique_combinations = df.groupby([material_column, branch_column]).groups.keys()
-    
+
     for material, branch in unique_combinations:
         group = df[(df[material_column] == material) & (df[branch_column] == branch)].sort_values(date_column)
-        
+
         start_quantity = group[start_quantity_column].iloc[0]
         end_quantity = group[end_quantity_column].iloc[-1]
         growth = end_quantity / start_quantity if start_quantity != 0 else np.inf
         months = (group[date_column].max() - group[date_column].min()).days / 30.44
-        
-        average_usage = (group[start_quantity_column] - group[end_quantity_column]).mean()
-        
-        # Правильный расчет общего использования
-        total_usage = abs((group[start_quantity_column] - group[end_quantity_column]).sum())
+
+        # ИСПРАВЛЕНИЕ ОШИБКИ #1: Используем фактическое списание если доступно
+        if consumption_column and consumption_column in group.columns:
+            average_usage = group[consumption_column].mean()
+            total_usage = group[consumption_column].sum()
+        else:
+            # Fallback: используем abs разницы остатков
+            average_usage = abs((group[start_quantity_column] - group[end_quantity_column]).mean())
+            total_usage = abs((group[start_quantity_column] - group[end_quantity_column]).sum())
         
         # Расчет среднего запаса
         average_inventory = abs((group[start_quantity_column] + group[end_quantity_column]).mean() / 2)
@@ -46,8 +50,12 @@ def analyze_historical_data(df, date_column, branch_column, material_column, sta
             trend = np.nan
         
         excess_inventory = "Да" if end_quantity > 2 * abs(average_usage) else "Нет"
-        
-        usage_std = (group[start_quantity_column] - group[end_quantity_column]).std()
+
+        # ИСПРАВЛЕНИЕ ОШИБКИ #1: Используем фактическое списание для расчета std
+        if consumption_column and consumption_column in group.columns:
+            usage_std = group[consumption_column].std()
+        else:
+            usage_std = abs((group[start_quantity_column] - group[end_quantity_column]).std())
         coefficient_variation = usage_std / abs(average_usage) if average_usage != 0 else np.nan
         
         end_cost = group[end_cost_column].iloc[-1]

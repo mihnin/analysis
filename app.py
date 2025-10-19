@@ -76,6 +76,11 @@ def main():
         end_quantity_column = st.selectbox("Выберите поле с количеством остатков на конец", st.session_state.historical_df.columns)
         end_cost_column = st.selectbox("Выберите поле со стоимостью остатков на конец", st.session_state.historical_df.columns)
 
+        # Опциональное поле для фактического списания/расхода
+        consumption_column = None
+        if st.checkbox("Есть колонка с фактическим списанием/расходом (рекомендуется для точных расчетов)"):
+            consumption_column = st.selectbox("Выберите поле с фактическим списанием", st.session_state.historical_df.columns)
+
         # Выбор конкретных значений признаков для исторических данных
         selected_materials = st.multiselect("Выберите материалы для анализа", st.session_state.historical_df[material_column].unique())
         selected_branches = st.multiselect("Выберите филиалы для анализа", st.session_state.historical_df[branch_column].unique())
@@ -111,8 +116,9 @@ def main():
                     material_column,
                     start_quantity_column,
                     end_quantity_column,
-                    end_cost_column,  # Добавьте эту строку
-                    interest_rate
+                    end_cost_column,
+                    interest_rate,
+                    consumption_column  # ИСПРАВЛЕНИЕ ОШИБКИ #1: передаем колонку списания
                 )
                 st.subheader("Анализ исторических данных")
                 st.dataframe(results_df)

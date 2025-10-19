@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python analyze_calculations.py)",
+      "Bash(python analyze_forecast.py)",
+      "Bash(python -m pytest test_historical_analysis.py -v)",
+      "Bash(python -m pytest test_forecast_analysis.py -v)",
+      "Bash(python -m pytest test_historical_analysis.py test_forecast_analysis.py -v)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
