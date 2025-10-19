@@ -1,4 +1,10 @@
-import streamlit as st
+# Опциональный импорт streamlit (только для web версии)
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
+
 import pandas as pd
 from io import BytesIO
 import xlsxwriter

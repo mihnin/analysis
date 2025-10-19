@@ -1,4 +1,17 @@
-import streamlit as st
+# Опциональный импорт streamlit (только для web версии)
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
+    # Заглушка для desktop версии
+    class st:
+        @staticmethod
+        def columns(*args, **kwargs):
+            return [None] * (args[0] if args else 1)
+        @staticmethod
+        def selectbox(*args, **kwargs):
+            return kwargs.get('index', 0) if 'options' in kwargs else None
 import pandas as pd
 from src.utils import data_processing as dp
 import db_operations as dbo
