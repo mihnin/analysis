@@ -14,6 +14,9 @@ sys.path.insert(0, str(root_dir))
 import sys
 import os
 import pandas as pd
+import logging
+import traceback
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QScrollArea, QFileDialog, QMessageBox, QLabel, QSpinBox,
@@ -22,21 +25,64 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon
 
+# Настройка логирования
+log_file = Path.home() / 'Nornickel_Inventory_Analysis.log'
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+logger.info("="*80)
+logger.info("ЗАПУСК ПРИЛОЖЕНИЯ")
+logger.info(f"Файл логов: {log_file}")
+logger.info(f"Python версия: {sys.version}")
+logger.info(f"Рабочая директория: {os.getcwd()}")
+logger.info(f"Root директория: {root_dir}")
+logger.info("="*80)
+
 # Импорт наших модулей
+logger.info("Импорт модулей UI...")
 from src.desktop.desktop_ui_styles import *
 from src.desktop.desktop_ui_components import *
 from src.desktop.file_validation import *
 from src.desktop.excel_export_desktop import export_full_report
+from src.utils.utils import auto_detect_columns
+logger.info("✓ Модули UI импортированы")
 
 # Импорт логики анализа из существующих модулей
-from src.analysis.historical_analysis import analyze_historical_data, get_explanation as get_historical_explanation
-from src.analysis.forecast_analysis import (
-    analyze_forecast_data,
-    auto_forecast_demand,
-    forecast_start_balance,
-    calculate_purchase_recommendations,
-    get_explanation as get_forecast_explanation
-)
+logger.info("Импорт модулей анализа...")
+try:
+    from src.analysis.historical_analysis import analyze_historical_data, get_explanation as get_historical_explanation
+    logger.info("✓ historical_analysis импортирован")
+    logger.info(f"  - analyze_historical_data: {type(analyze_historical_data)}")
+    logger.info(f"  - get_historical_explanation: {type(get_historical_explanation)}")
+except Exception as e:
+    logger.error(f"✗ Ошибка импорта historical_analysis: {e}")
+    logger.error(traceback.format_exc())
+
+try:
+    from src.analysis.forecast_analysis import (
+        analyze_forecast_data,
+        auto_forecast_demand,
+        forecast_start_balance,
+        calculate_purchase_recommendations,
+        get_explanation as get_forecast_explanation
+    )
+    logger.info("✓ forecast_analysis импортирован")
+    logger.info(f"  - analyze_forecast_data: {type(analyze_forecast_data)}")
+    logger.info(f"  - auto_forecast_demand: {type(auto_forecast_demand)}")
+    logger.info(f"  - forecast_start_balance: {type(forecast_start_balance)}")
+    logger.info(f"  - calculate_purchase_recommendations: {type(calculate_purchase_recommendations)}")
+    logger.info(f"  - get_forecast_explanation: {type(get_forecast_explanation)}")
+except Exception as e:
+    logger.error(f"✗ Ошибка импорта forecast_analysis: {e}")
+    logger.error(traceback.format_exc())
+
+logger.info("Все модули импортированы успешно")
 
 
 class AnalysisWorker(QThread):
@@ -51,64 +97,140 @@ class AnalysisWorker(QThread):
 
     def run(self):
         """Выполнить анализ"""
+        logger.info("="*80)
+        logger.info("НАЧАЛО АНАЛИЗА")
+        logger.info(f"Конфигурация: {self.config}")
+        logger.info("="*80)
+
         try:
             results = {}
 
             # Шаг 1: Исторический анализ
+            logger.info("[ШАГ 1] Загрузка исторических данных...")
             self.progress.emit(10, "Загрузка исторических данных...")
+            logger.info(f"Файл: {self.config['historical_file']}")
             df_hist = pd.read_excel(self.config['historical_file'])
+            logger.info(f"✓ Данные загружены: {df_hist.shape[0]} строк, {df_hist.shape[1]} колонок")
+            logger.info(f"Колонки: {list(df_hist.columns)}")
 
+            logger.info("[ШАГ 2] Анализ исторических данных...")
             self.progress.emit(30, "Анализ исторических данных...")
+
+            # Автоматическое определение колонок
+            logger.info("Автоматическое определение колонок...")
+            detected_cols = auto_detect_columns(df_hist)
+            logger.info(f"Обнаружено колонок: {detected_cols}")
+
+            # Получение колонок (либо из конфига, либо автоопределение, либо дефолт)
+            date_col = self.config.get('date_col') or detected_cols.get('date') or df_hist.columns[0]
+            branch_col = self.config.get('branch_col') or detected_cols.get('branch')
+            material_col = self.config.get('material_col') or detected_cols.get('material') or df_hist.columns[1]
+            start_qty_col = self.config.get('start_qty_col') or detected_cols.get('start_quantity') or df_hist.columns[3]
+            end_qty_col = self.config.get('end_qty_col') or detected_cols.get('end_quantity') or df_hist.columns[6]
+            end_cost_col = self.config.get('end_cost_col') or detected_cols.get('end_cost')
+            consumption_col = self.config.get('consumption_col') or detected_cols.get('consumption')
+
+            logger.info(f"Параметры анализа (после автоопределения):")
+            logger.info(f"  - date_column: {date_col}")
+            logger.info(f"  - branch_column: {branch_col}")
+            logger.info(f"  - material_column: {material_col}")
+            logger.info(f"  - start_quantity_column: {start_qty_col}")
+            logger.info(f"  - end_quantity_column: {end_qty_col}")
+            logger.info(f"  - end_cost_column: {end_cost_col}")
+            logger.info(f"  - consumption_column: {consumption_col}")
+            logger.info(f"  - interest_rate: {self.config.get('interest_rate', 0.05)}")
+            logger.info(f"  - lead_time_days: {self.config.get('lead_time_days', 30)}")
+
+            logger.info("Вызов analyze_historical_data()...")
+            logger.info(f"Тип функции: {type(analyze_historical_data)}")
+
             hist_results, _ = analyze_historical_data(
                 df=df_hist,
-                date_column=self.config.get('date_col', df_hist.columns[0]),
-                branch_column=self.config.get('branch_col', None),
-                material_column=self.config.get('material_col', df_hist.columns[1]),
-                start_quantity_column=self.config.get('start_qty_col', df_hist.columns[2]),
-                end_quantity_column=self.config.get('end_qty_col', df_hist.columns[3]),
-                end_cost_column=self.config.get('end_cost_col', None),
+                date_column=date_col,
+                branch_column=branch_col,
+                material_column=material_col,
+                start_quantity_column=start_qty_col,
+                end_quantity_column=end_qty_col,
+                end_cost_column=end_cost_col,
                 interest_rate=self.config.get('interest_rate', 0.05),
-                consumption_column=self.config.get('consumption_col', None),
+                consumption_column=consumption_col,
                 lead_time_days=self.config.get('lead_time_days', 30)
             )
+            logger.info(f"✓ analyze_historical_data() выполнена успешно")
+            logger.info(f"Результат: тип={type(hist_results)}, shape={hist_results.shape if hasattr(hist_results, 'shape') else 'N/A'}")
+
             results['historical'] = hist_results
-            results['historical_explanation'] = get_historical_explanation(hist_results)
+
+            logger.info("Вызов get_historical_explanation()...")
+            logger.info(f"Тип функции: {type(get_historical_explanation)}")
+            logger.info(f"Первая строка hist_results: {hist_results.iloc[0].to_dict() if hasattr(hist_results, 'iloc') else 'N/A'}")
+
+            results['historical_explanation'] = get_historical_explanation(hist_results.iloc[0])
+            logger.info(f"✓ get_historical_explanation() выполнена успешно")
 
             # Шаг 2: Прогнозный анализ
-            if self.config.get('forecast_mode') == 'auto':
+            logger.info("[ШАГ 3] Прогнозный анализ...")
+            forecast_mode = self.config.get('forecast_mode')
+            logger.info(f"Режим прогноза: {forecast_mode}")
+
+            if forecast_mode == 'auto':
                 # Автоматический прогноз
+                logger.info("[ШАГ 3.1] Генерация автоматического прогноза...")
                 self.progress.emit(50, "Генерация автоматического прогноза...")
+
+                logger.info("Вызов auto_forecast_demand()...")
+                logger.info(f"Тип функции: {type(auto_forecast_demand)}")
+                logger.info(f"Параметры:")
+                logger.info(f"  - forecast_periods: {self.config.get('forecast_periods', 12)}")
+                logger.info(f"  - date_column: {date_col}")
+                logger.info(f"  - material_column: {material_col}")
+                logger.info(f"  - branch_column: {branch_col}")
+                logger.info(f"  - consumption_column: {consumption_col}")
+                logger.info(f"  - forecast_model: {self.config.get('forecast_model', 'auto')}")
 
                 forecast_df = auto_forecast_demand(
                     historical_df=df_hist,
                     forecast_periods=self.config.get('forecast_periods', 12),
-                    date_column=self.config.get('date_col'),
-                    material_column=self.config.get('material_col'),
-                    branch_column=self.config.get('branch_col'),
-                    consumption_column=self.config.get('consumption_col'),
+                    date_column=date_col,
+                    material_column=material_col,
+                    branch_column=branch_col,
+                    consumption_column=consumption_col,
                     forecast_model=self.config.get('forecast_model', 'auto')
                 )
+                logger.info(f"✓ auto_forecast_demand() выполнена успешно")
+                logger.info(f"Результат: тип={type(forecast_df)}, shape={forecast_df.shape if hasattr(forecast_df, 'shape') else 'N/A'}")
 
+                logger.info("[ШАГ 3.2] Прогноз начальных остатков...")
                 self.progress.emit(70, "Прогноз начальных остатков...")
+                logger.info("Вызов forecast_start_balance()...")
+                logger.info(f"Тип функции: {type(forecast_start_balance)}")
+
                 # Прогноз начальных остатков
                 forecast_df['Прогноз остатка на начало'] = forecast_start_balance(
                     df_hist,
                     forecast_df,
-                    self.config.get('date_col'),
-                    self.config.get('material_col'),
-                    self.config.get('branch_col'),
-                    self.config.get('end_qty_col'),
-                    self.config.get('date_col'),  # forecast_date_column
-                    self.config.get('material_col'),  # forecast_material_column
-                    self.config.get('branch_col'),  # forecast_branch_column
+                    date_col,
+                    material_col,
+                    branch_col,
+                    end_qty_col,
+                    date_col,  # forecast_date_column
+                    material_col,  # forecast_material_column
+                    branch_col,  # forecast_branch_column
                     forecast_model='naive',
                     seasonal_periods=12
                 )
+                logger.info(f"✓ forecast_start_balance() выполнена успешно")
 
                 # Расчет конечных остатков
+                logger.info("[ШАГ 3.3] Расчет конечных остатков...")
                 forecast_df['Прогноз остатка на конец'] = forecast_df['Прогноз остатка на начало'] - forecast_df['Запланированная потребность']
+                logger.info(f"✓ Конечные остатки рассчитаны")
 
+                logger.info("[ШАГ 3.4] Расчет рекомендаций по закупкам...")
                 self.progress.emit(85, "Расчет рекомендаций по закупкам...")
+                logger.info("Вызов calculate_purchase_recommendations()...")
+                logger.info(f"Тип функции: {type(calculate_purchase_recommendations)}")
+
                 # Расчет рекомендаций
                 recommendations_df = calculate_purchase_recommendations(
                     forecast_df,
@@ -116,14 +238,21 @@ class AnalysisWorker(QThread):
                     'Запланированная потребность',
                     self.config.get('safety_stock_pct', 0.20)
                 )
+                logger.info(f"✓ calculate_purchase_recommendations() выполнена успешно")
+
                 forecast_df = pd.concat([forecast_df, recommendations_df], axis=1)
+                logger.info(f"✓ Рекомендации добавлены в DataFrame")
 
                 # Анализ
+                logger.info("[ШАГ 3.5] Финальный анализ прогноза...")
+                logger.info("Вызов analyze_forecast_data()...")
+                logger.info(f"Тип функции: {type(analyze_forecast_data)}")
+
                 forecast_results, _ = analyze_forecast_data(
                     forecast_df,
-                    self.config.get('date_col'),
-                    self.config.get('material_col'),
-                    self.config.get('branch_col'),
+                    date_col,
+                    material_col,
+                    branch_col,
                     'Запланированная потребность',
                     'Прогноз остатка на начало',
                     'Прогноз остатка на конец',
@@ -131,32 +260,48 @@ class AnalysisWorker(QThread):
                     'Будущий спрос',
                     'Страховой запас'
                 )
+                logger.info(f"✓ analyze_forecast_data() выполнена успешно")
 
             else:
                 # Ручной прогноз из файла
+                logger.info("[ШАГ 3.1] Загрузка прогнозных данных...")
                 self.progress.emit(50, "Загрузка прогнозных данных...")
                 df_forecast = pd.read_excel(self.config['forecast_file'])
+                logger.info(f"✓ Прогнозные данные загружены: {df_forecast.shape[0]} строк, {df_forecast.shape[1]} колонок")
 
+                # Автоматическое определение колонок в прогнозном файле
+                logger.info("Автоматическое определение колонок прогноза...")
+                forecast_detected_cols = auto_detect_columns(df_forecast)
+                logger.info(f"Обнаружено колонок в прогнозе: {forecast_detected_cols}")
+
+                # Получение колонки планового спроса
+                planned_demand_col = self.config.get('planned_demand_col') or forecast_detected_cols.get('planned_demand') or df_forecast.columns[3]
+                logger.info(f"Колонка планового спроса: {planned_demand_col}")
+
+                logger.info("[ШАГ 3.2] Прогноз начальных остатков...")
                 self.progress.emit(70, "Прогноз начальных остатков...")
                 # Прогноз начальных остатков
                 df_forecast['Прогноз остатка на начало'] = forecast_start_balance(
                     df_hist,
                     df_forecast,
-                    self.config.get('date_col'),
-                    self.config.get('material_col'),
-                    self.config.get('branch_col'),
-                    self.config.get('end_qty_col'),
-                    self.config.get('date_col'),  # forecast_date_column
-                    self.config.get('material_col'),  # forecast_material_column
-                    self.config.get('branch_col'),  # forecast_branch_column
+                    date_col,
+                    material_col,
+                    branch_col,
+                    end_qty_col,
+                    date_col,  # forecast_date_column
+                    material_col,  # forecast_material_column
+                    branch_col,  # forecast_branch_column
                     forecast_model='naive',
                     seasonal_periods=12
                 )
+                logger.info(f"✓ forecast_start_balance() выполнена успешно")
 
                 # Расчет конечных остатков
-                planned_demand_col = self.config.get('planned_demand_col')
+                logger.info("[ШАГ 3.3] Расчет конечных остатков...")
                 df_forecast['Прогноз остатка на конец'] = df_forecast['Прогноз остатка на начало'] - df_forecast[planned_demand_col]
+                logger.info(f"✓ Конечные остатки рассчитаны")
 
+                logger.info("[ШАГ 3.4] Расчет рекомендаций по закупкам...")
                 self.progress.emit(85, "Расчет рекомендаций по закупкам...")
                 # Расчет рекомендаций
                 recommendations_df = calculate_purchase_recommendations(
@@ -165,14 +310,18 @@ class AnalysisWorker(QThread):
                     planned_demand_col,
                     self.config.get('safety_stock_pct', 0.20)
                 )
+                logger.info(f"✓ calculate_purchase_recommendations() выполнена успешно")
+
                 df_forecast = pd.concat([df_forecast, recommendations_df], axis=1)
+                logger.info(f"✓ Рекомендации добавлены в DataFrame")
 
                 # Анализ
+                logger.info("[ШАГ 3.5] Финальный анализ прогноза...")
                 forecast_results, _ = analyze_forecast_data(
                     df_forecast,
-                    self.config.get('date_col'),
-                    self.config.get('material_col'),
-                    self.config.get('branch_col'),
+                    date_col,
+                    material_col,
+                    branch_col,
                     planned_demand_col,
                     'Прогноз остатка на начало',
                     'Прогноз остатка на конец',
@@ -180,15 +329,55 @@ class AnalysisWorker(QThread):
                     'Будущий спрос',
                     'Страховой запас'
                 )
+                logger.info(f"✓ analyze_forecast_data() выполнена успешно")
 
+            logger.info("[ШАГ 4] Сохранение результатов прогноза...")
             results['forecast'] = forecast_results
-            results['forecast_explanation'] = get_forecast_explanation(forecast_results)
+            logger.info(f"✓ Результаты прогноза сохранены")
+
+            logger.info("Вызов get_forecast_explanation()...")
+            logger.info(f"Тип функции: {type(get_forecast_explanation)}")
+            logger.info(f"Первая строка forecast_results: {forecast_results.iloc[0].to_dict() if hasattr(forecast_results, 'iloc') else 'N/A'}")
+
+            # Определяем имена колонок для explanation
+            if forecast_mode == 'auto':
+                demand_col_name = 'Запланированная потребность'
+            else:
+                demand_col_name = planned_demand_col
+
+            results['forecast_explanation'] = get_forecast_explanation(
+                forecast_results.iloc[0],
+                date_col,
+                material_col,
+                branch_col,
+                demand_col_name,
+                'Прогноз остатка на начало',
+                'Прогноз остатка на конец',
+                'Рекомендация по закупке',
+                'Будущий спрос',
+                'Страховой запас'
+            )
+            logger.info(f"✓ get_forecast_explanation() выполнена успешно")
+
+            logger.info("="*80)
+            logger.info("АНАЛИЗ ЗАВЕРШЕН УСПЕШНО!")
+            logger.info("="*80)
 
             self.progress.emit(100, "Анализ завершен!")
             self.finished.emit(True, results)
 
         except Exception as e:
-            self.finished.emit(False, str(e))
+            logger.error("="*80)
+            logger.error("ОШИБКА ПРИ ВЫПОЛНЕНИИ АНАЛИЗА!")
+            logger.error(f"Тип ошибки: {type(e).__name__}")
+            logger.error(f"Сообщение: {str(e)}")
+            logger.error("="*80)
+            logger.error("ПОЛНЫЙ TRACEBACK:")
+            logger.error(traceback.format_exc())
+            logger.error("="*80)
+
+            error_message = f"{type(e).__name__}: {str(e)}\n\nПодробности в логе: {log_file}"
+            self.finished.emit(False, error_message)
 
 
 class MainWindow(QMainWindow):
@@ -576,8 +765,14 @@ class MainWindow(QMainWindow):
 
     def run_analysis(self):
         """Запустить анализ"""
+        logger.info("="*80)
+        logger.info("НАЖАТА КНОПКА 'ВЫПОЛНИТЬ АНАЛИЗ'")
+        logger.info("="*80)
+
         # Проверка наличия исторических данных
+        logger.info("Проверка наличия исторических данных...")
         if not self.historical_file:
+            logger.warning("Исторические данные не загружены")
             show_message_box(
                 self,
                 "Ошибка",
@@ -585,9 +780,12 @@ class MainWindow(QMainWindow):
                 "error"
             )
             return
+        logger.info(f"✓ Исторические данные: {self.historical_file}")
 
         # Проверка прогноза в ручном режиме
+        logger.info(f"Режим: {'Автоматический' if self.radio_auto.isChecked() else 'Ручной'}")
         if self.radio_manual.isChecked() and not self.forecast_file:
+            logger.warning("Ручной режим выбран, но файл прогноза не загружен")
             show_message_box(
                 self,
                 "Ошибка",
@@ -597,6 +795,7 @@ class MainWindow(QMainWindow):
             return
 
         # Подготовка конфигурации
+        logger.info("Подготовка конфигурации...")
         config = {
             'historical_file': self.historical_file,
             'forecast_mode': 'auto' if self.radio_auto.isChecked() else 'manual',
@@ -612,7 +811,12 @@ class MainWindow(QMainWindow):
         else:
             config['forecast_file'] = self.forecast_file
 
+        logger.info(f"Конфигурация подготовлена:")
+        for key, value in config.items():
+            logger.info(f"  - {key}: {value}")
+
         # Запуск анализа в фоновом потоке
+        logger.info("Запуск рабочего потока анализа...")
         self.run_button.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_label.setVisible(True)
@@ -622,6 +826,7 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self.on_analysis_progress)
         self.worker.finished.connect(self.on_analysis_finished)
         self.worker.start()
+        logger.info("✓ Рабочий поток запущен")
 
     def on_analysis_progress(self, percent, message):
         """Обработчик прогресса анализа"""

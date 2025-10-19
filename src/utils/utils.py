@@ -4,6 +4,47 @@ try:
     HAS_STREAMLIT = True
 except ImportError:
     HAS_STREAMLIT = False
+    # Заглушка для desktop версии
+    class DummySessionState:
+        def __init__(self):
+            pass
+        def __contains__(self, key):
+            return False
+        def __setitem__(self, key, value):
+            pass
+        def __getitem__(self, key):
+            return None
+
+    class st:
+        session_state = DummySessionState()
+
+        @staticmethod
+        def success(*args, **kwargs):
+            pass
+
+        @staticmethod
+        def error(*args, **kwargs):
+            pass
+
+        @staticmethod
+        def selectbox(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def multiselect(*args, **kwargs):
+            return []
+
+        @staticmethod
+        def date_input(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def slider(*args, **kwargs):
+            return 0
+
+        @staticmethod
+        def subheader(*args, **kwargs):
+            pass
 
 import pandas as pd
 from io import BytesIO
@@ -99,3 +140,39 @@ def filter_data(df, date_column, material_column, branch_column, key):
 def set_safety_stock():
     st.session_state.safety_stock_percent = st.slider("Выберите процент страхового запаса", 0, 100, st.session_state.safety_stock_percent, 5)
     return st.session_state.safety_stock_percent / 100
+
+def auto_detect_columns(df):
+    """
+    Автоматическое определение колонок в DataFrame по ключевым словам
+
+    Returns:
+        dict: Словарь с найденными колонками
+    """
+    columns = df.columns.tolist()
+    detected = {}
+
+    # Ключевые слова для поиска (в нижнем регистре)
+    keywords = {
+        'date': ['дата', 'date', 'период', 'month', 'месяц', 'время', 'time'],
+        'branch': ['филиал', 'branch', 'склад', 'warehouse', 'подразделение', 'division'],
+        'material': ['материал', 'material', 'товар', 'артикул', 'sku', 'item', 'продукт', 'product'],
+        'start_quantity': ['начальный остаток', 'start balance', 'остаток на начало', 'начало', 'start', 'opening'],
+        'end_quantity': ['конечный остаток', 'end balance', 'остаток на конец', 'конец', 'end', 'closing'],
+        'consumption': ['потребление', 'consumption', 'расход', 'usage', 'использование', 'списание'],
+        'arrival': ['поступление', 'приход', 'закуп', 'arrival', 'purchase', 'receipt'],
+        'end_cost': ['стоимость', 'cost', 'цена', 'price', 'конечная стоимость', 'end cost'],
+        'planned_demand': ['плановый спрос', 'demand', 'forecast', 'прогноз', 'план', 'planned']
+    }
+
+    # Поиск колонок по ключевым словам
+    for col in columns:
+        col_lower = col.lower().strip()
+
+        for key, words in keywords.items():
+            if key not in detected:  # Только если еще не найдено
+                for word in words:
+                    if word in col_lower:
+                        detected[key] = col
+                        break
+
+    return detected

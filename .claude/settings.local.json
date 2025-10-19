@@ -8,7 +8,10 @@
       "Bash(python scripts/build_exe.py)",
       "Bash(tee build_log.txt)",
       "Bash(dir distNornickel_Inventory_Analysis.exe)",
-      "Bash(powershell -Command \"Get-Item ''dist\\Nornickel_Inventory_Analysis.exe'' | Select-Object Name, Length, LastWriteTime\")"
+      "Bash(powershell -Command \"Get-Item ''dist\\Nornickel_Inventory_Analysis.exe'' | Select-Object Name, Length, LastWriteTime\")",
+      "Bash(tee build_log_with_logging.txt)",
+      "Bash(taskkill /F /IM Nornickel_Inventory_Analysis.exe)",
+      "Bash(powershell -Command \"Get-Process | Where-Object {$_ProcessName -like ''*Nornickel*''} | Stop-Process -Force\")"
     ],
     "deny": [],
     "ask": []
