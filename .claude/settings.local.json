@@ -5,7 +5,8 @@
       "Bash(python -m pytest tests/ -v --tb=line)",
       "Bash(python -m pytest tests/unit/ --tb=short)",
       "Bash(python tests/functional/test_imports.py)",
-      "Bash(python -c \"\nimport sys\nsys.path.insert(0, ''.'')\nfrom src.analysis import historical_analysis\nfrom src.analysis import forecast_analysis\nfrom src.analysis import forecasting_models\nfrom src.utils import data_validation\nprint(''[OK] All core modules imported successfully!'')\n\")"
+      "Bash(python -c \"\nimport sys\nsys.path.insert(0, ''.'')\nfrom src.analysis import historical_analysis\nfrom src.analysis import forecast_analysis\nfrom src.analysis import forecasting_models\nfrom src.utils import data_validation\nprint(''[OK] All core modules imported successfully!'')\n\")",
+      "Bash(tree -L 2 -I '__pycache__|*.pyc|.git' -d)"
     ],
     "deny": [],
     "ask": []

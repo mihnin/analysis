@@ -51,20 +51,20 @@ jobs:
 
     - name: Run unit tests with pytest
       run: |
-        pytest test_historical_analysis.py test_forecast_analysis.py test_forecasting_models.py -v --tb=short --maxfail=3
+        pytest tests/unit/test_historical_analysis.py tests/unit/test_forecast_analysis.py tests/unit/test_forecasting_models.py -v --tb=short --maxfail=3
 
     - name: Run consumption convention tests
       run: |
-        pytest test_consumption_conventions.py -v --tb=short
+        pytest tests/integration/test_consumption_conventions.py -v --tb=short
 
     - name: Run integration tests
       run: |
-        pytest test_new_features.py test_both_templates.py -v --tb=short
+        pytest tests/integration/test_new_features.py tests/integration/test_both_templates.py -v --tb=short
       continue-on-error: true
 
     - name: Generate coverage report
       run: |
-        pytest --cov=. --cov-report=xml --cov-report=term test_historical_analysis.py test_forecast_analysis.py test_forecasting_models.py
+        pytest --cov=src --cov-report=xml --cov-report=term tests/unit/
       continue-on-error: true
 
     - name: Upload coverage to Codecov
@@ -125,13 +125,13 @@ jobs:
 
     - name: Run import tests
       run: |
-        pytest test_imports.py -v
+        pytest tests/functional/test_imports.py -v
 
     - name: Test template files
       run: |
-        pytest test_both_templates.py -v
+        pytest tests/integration/test_both_templates.py -v
       continue-on-error: true
 
     - name: Verify core modules load
       run: |
-        python -c "import historical_analysis; import forecast_analysis; import forecasting_models; print('✓ All core modules loaded successfully')"
+        python -c "import sys; sys.path.insert(0, '.'); from src.analysis import historical_analysis, forecast_analysis, forecasting_models; from src.utils import data_validation; print('[OK] All core modules loaded successfully')"
