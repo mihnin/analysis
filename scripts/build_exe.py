@@ -17,7 +17,7 @@ import subprocess
 
 # Конфигурация сборки
 APP_NAME = "Nornickel_Inventory_Analysis"
-MAIN_SCRIPT = "desktop_app.py"
+MAIN_SCRIPT = os.path.join("src", "desktop", "desktop_app.py")
 ICON_FILE = "icon.ico"  # Если есть иконка
 
 
@@ -30,14 +30,16 @@ HIDDEN_IMPORTS = [
     'openpyxl',
     'statsmodels',
     'scipy',
-    'historical_analysis',
-    'forecast_analysis',
-    'forecasting_models',
-    'data_validation',
-    'file_validation',
-    'desktop_ui_styles',
-    'desktop_ui_components',
-    'excel_export_desktop',
+    'src.analysis.historical_analysis',
+    'src.analysis.forecast_analysis',
+    'src.analysis.forecasting_models',
+    'src.utils.data_validation',
+    'src.utils.utils',
+    'src.utils.visualization',
+    'src.desktop.file_validation',
+    'src.desktop.desktop_ui_styles',
+    'src.desktop.desktop_ui_components',
+    'src.desktop.excel_export_desktop',
 ]
 
 
@@ -60,11 +62,12 @@ def build_exe():
 
     # Формирование команды PyInstaller
     cmd = [
-        'pyinstaller',
+        sys.executable, '-m', 'PyInstaller',  # Запуск через python -m
         '--name', APP_NAME,
         '--onefile',  # Один исполняемый файл
         '--windowed',  # Без консоли (GUI приложение)
         '--clean',  # Очистить временные файлы
+        '--paths', '.',  # Добавить текущую директорию в путь поиска модулей
     ]
 
     # Добавить иконку, если есть
