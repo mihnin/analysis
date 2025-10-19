@@ -220,6 +220,55 @@ class ExcelExporter:
         # Заморозить первую строку таблицы
         worksheet.freeze_panes(start_row + 1, 0)
 
+    def add_simple_data_sheet(self, df: pd.DataFrame, sheet_name: str):
+        """
+        Добавить простую вкладку с таблицей данных (без текстовых пояснений).
+
+        Args:
+            df: DataFrame с данными
+            sheet_name: Название вкладки
+        """
+        worksheet = self.workbook.add_worksheet(sheet_name)
+
+        # Заголовок страницы
+        worksheet.write('A1', sheet_name.upper(), self.format_title)
+        worksheet.write('A2', f'Дата формирования: {datetime.now().strftime("%d.%m.%Y %H:%M")}', self.format_normal)
+        worksheet.write('A3', f'Всего записей: {len(df)}', self.format_normal)
+
+        # Таблица с данными начинается с 5 строки
+        start_row = 4
+
+        # Записать заголовки колонок
+        for col_num, column in enumerate(df.columns):
+            worksheet.write(start_row, col_num, str(column), self.format_header)
+            # Автоматическая ширина колонок
+            max_length = max(
+                len(str(column)),
+                df[column].astype(str).str.len().max() if len(df) > 0 else 10
+            )
+            worksheet.set_column(col_num, col_num, min(max_length + 2, 40))
+
+        # Записать данные
+        for row_num, row_data in enumerate(df.values):
+            for col_num, value in enumerate(row_data):
+                # Определить формат ячейки
+                if pd.isna(value):
+                    cell_format = self.format_normal
+                elif isinstance(value, (int, float)):
+                    cell_format = self.format_number
+                elif isinstance(value, datetime):
+                    cell_format = self.format_date
+                else:
+                    cell_format = self.format_normal
+
+                worksheet.write(start_row + 1 + row_num, col_num, value, cell_format)
+
+        # Заморозить первую строку таблицы и первые 2 колонки (обычно Дата и Материал)
+        worksheet.freeze_panes(start_row + 1, 2)
+
+        # Добавить автофильтр
+        worksheet.autofilter(start_row, 0, start_row + len(df), len(df.columns) - 1)
+
     def add_instructions_sheet(self):
         """Добавить вкладку с инструкцией по использованию"""
         worksheet = self.workbook.add_worksheet('3. Инструкция')
@@ -615,9 +664,9 @@ def export_full_report(
     Args:
         file_path: Путь к файлу для сохранения
         df_historical: DataFrame с историческим анализом
-        explanation_historical: Объяснение исторического анализа
+        explanation_historical: Объяснение исторического анализа (None = только таблица)
         df_forecast: DataFrame с прогнозом
-        explanation_forecast: Объяснение прогноза
+        explanation_forecast: Объяснение прогноза (None = только таблица)
 
     Returns:
         bool: True если успешно, False если ошибка
@@ -625,19 +674,28 @@ def export_full_report(
     try:
         exporter = ExcelExporter(file_path)
 
-        # Добавить вкладки
-        if df_historical is not None and explanation_historical:
-            exporter.add_historical_analysis_sheet(df_historical, explanation_historical)
+        # Добавить вкладки с таблицами (без текстовых пояснений)
+        if df_historical is not None:
+            if explanation_historical:
+                # Старый формат с пояснениями
+                exporter.add_historical_analysis_sheet(df_historical, explanation_historical)
+            else:
+                # Только таблица с данными
+                exporter.add_simple_data_sheet(df_historical, "Исторический анализ")
 
-        if df_forecast is not None and explanation_forecast:
-            exporter.add_forecast_analysis_sheet(df_forecast, explanation_forecast)
-
-        exporter.add_instructions_sheet()
-        exporter.add_business_value_sheet()
+        if df_forecast is not None:
+            if explanation_forecast:
+                # Старый формат с пояснениями
+                exporter.add_forecast_analysis_sheet(df_forecast, explanation_forecast)
+            else:
+                # Только таблица с данными
+                exporter.add_simple_data_sheet(df_forecast, "Прогноз и закупки")
 
         # Сохранить файл
         return exporter.close()
 
     except Exception as e:
         print(f"Ошибка при экспорте: {e}")
+        import traceback
+        traceback.print_exc()
         return False

@@ -954,7 +954,7 @@ class MainWindow(QMainWindow):
                 logger.error(traceback.format_exc())
 
     def export_results(self):
-        """Экспортировать результаты в Excel"""
+        """Экспортировать результаты в Excel и markdown файлы"""
         if not self.analysis_results:
             show_message_box(
                 self,
@@ -973,27 +973,67 @@ class MainWindow(QMainWindow):
         )
 
         if file_path:
-            # Экспорт
-            success = export_full_report(
-                file_path,
-                df_historical=self.analysis_results['historical'],
-                explanation_historical=self.analysis_results['historical_explanation'],
-                df_forecast=self.analysis_results['forecast'],
-                explanation_forecast=self.analysis_results['forecast_explanation']
-            )
+            try:
+                logger.info(f"Экспорт результатов в: {file_path}")
 
-            if success:
-                show_message_box(
-                    self,
-                    "Успех",
-                    f"Результаты успешно сохранены в:\n{file_path}",
-                    "success"
+                # Получаем директорию для сохранения файлов
+                from pathlib import Path
+                output_dir = Path(file_path).parent
+                base_name = Path(file_path).stem
+
+                # 1. Сохраняем пояснения в отдельные .md файлы
+                logger.info("Сохранение пояснений в markdown файлы...")
+
+                # Исторический анализ
+                hist_md_path = output_dir / f"{base_name}_Исторический_анализ.md"
+                with open(hist_md_path, 'w', encoding='utf-8') as f:
+                    f.write("# Подробные пояснения расчетов - Исторический анализ\n\n")
+                    f.write(self.analysis_results.get('historical_explanation', ''))
+                logger.info(f"✓ Сохранен файл: {hist_md_path}")
+
+                # Прогноз и закупки
+                forecast_md_path = output_dir / f"{base_name}_Прогноз_закупки.md"
+                with open(forecast_md_path, 'w', encoding='utf-8') as f:
+                    f.write("# Подробные пояснения расчетов - Прогноз и закупки\n\n")
+                    f.write(self.analysis_results.get('forecast_explanation', ''))
+                logger.info(f"✓ Сохранен файл: {forecast_md_path}")
+
+                # 2. Экспорт Excel БЕЗ текстовых пояснений (только таблицы)
+                logger.info("Экспорт Excel файла с таблицами...")
+                success = export_full_report(
+                    file_path,
+                    df_historical=self.analysis_results['historical'],
+                    explanation_historical=None,  # Не включаем в Excel
+                    df_forecast=self.analysis_results['forecast'],
+                    explanation_forecast=None  # Не включаем в Excel
                 )
-            else:
+
+                if success:
+                    logger.info("✓ Экспорт завершен успешно")
+                    show_message_box(
+                        self,
+                        "Успех",
+                        f"Результаты успешно сохранены:\n\n"
+                        f"📊 Excel: {file_path}\n"
+                        f"📄 Пояснения (исторический): {hist_md_path.name}\n"
+                        f"📄 Пояснения (прогноз): {forecast_md_path.name}",
+                        "success"
+                    )
+                else:
+                    show_message_box(
+                        self,
+                        "Ошибка",
+                        "Не удалось сохранить Excel файл",
+                        "error"
+                    )
+
+            except Exception as e:
+                logger.error(f"Ошибка при экспорте: {e}")
+                logger.error(traceback.format_exc())
                 show_message_box(
                     self,
                     "Ошибка",
-                    "Не удалось сохранить файл",
+                    f"Произошла ошибка при сохранении:\n{str(e)}",
                     "error"
                 )
 
