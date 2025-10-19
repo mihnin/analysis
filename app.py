@@ -78,8 +78,25 @@ def main():
 
         # Опциональное поле для фактического списания/расхода
         consumption_column = None
+        consumption_convention = 'AUTO'
         if st.checkbox("Есть колонка с фактическим списанием/расходом (рекомендуется для точных расчетов)"):
             consumption_column = st.selectbox("Выберите поле с фактическим списанием", st.session_state.historical_df.columns)
+
+            # Выбор конвенции знака списания
+            with st.expander("⚙️ Настройки знака списания (для продвинутых пользователей)"):
+                st.write("""
+                **В разных системах учета списание может быть представлено по-разному:**
+                - **AUTO (рекомендуется)**: Система автоматически определит конвенцию по балансу данных
+                - **POSITIVE**: Списание = положительное число (расход товара)
+                - **NEGATIVE**: Списание = отрицательное число (уменьшение запаса)
+                - **ABS**: Просто взять модуль всех значений (безопасный вариант)
+                """)
+                consumption_convention = st.radio(
+                    "Как представлено списание в ваших данных?",
+                    ['AUTO', 'POSITIVE', 'NEGATIVE', 'ABS'],
+                    index=0,
+                    help="AUTO - система сама определит правильный формат"
+                )
 
         # Выбор конкретных значений признаков для исторических данных
         selected_materials = st.multiselect("Выберите материалы для анализа", st.session_state.historical_df[material_column].unique())
@@ -107,6 +124,17 @@ def main():
 
         # Анализ исторических данных
         interest_rate = st.number_input("Введите процентную ставку для расчета упущенной выгоды", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
+
+        # НОВЫЙ ПАРАМЕТР: Lead Time (время выполнения заказа)
+        lead_time_days = st.number_input(
+            "Время выполнения заказа (Lead Time) в днях",
+            min_value=1,
+            max_value=365,
+            value=30,
+            step=1,
+            help="Среднее время от размещения заказа до получения товара. Используется для расчета точки заказа (ROP)."
+        )
+
         if st.button("Провести анализ исторических данных"):
             try:
                 results_df, explanation = ha.analyze_historical_data(
@@ -118,7 +146,9 @@ def main():
                     end_quantity_column,
                     end_cost_column,
                     interest_rate,
-                    consumption_column  # ИСПРАВЛЕНИЕ ОШИБКИ #1: передаем колонку списания
+                    consumption_column,  # ИСПРАВЛЕНИЕ ОШИБКИ #1: передаем колонку списания
+                    lead_time_days,  # НОВЫЙ ПАРАМЕТР: Lead Time
+                    consumption_convention  # НОВЫЙ ПАРАМЕТР: Конвенция знака списания
                 )
                 st.subheader("Анализ исторических данных")
                 st.dataframe(results_df)

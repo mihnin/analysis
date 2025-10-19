@@ -2,9 +2,41 @@ import pandas as pd
 import numpy as np
 from statsmodels.tsa.seasonal import seasonal_decompose
 from scipy import stats
+import data_validation as dv
 
-def analyze_historical_data(df, date_column, branch_column, material_column, start_quantity_column, end_quantity_column, end_cost_column, interest_rate, consumption_column=None):
+def analyze_historical_data(df, date_column, branch_column, material_column, start_quantity_column, end_quantity_column, end_cost_column, interest_rate, consumption_column=None, lead_time_days=30, consumption_convention='AUTO'):
+    """
+    Анализ исторических данных по запасам
+
+    Parameters:
+    -----------
+    lead_time_days : int, optional
+        Время выполнения заказа в днях (по умолчанию 30)
+    consumption_convention : str, optional
+        Конвенция знака списания: 'AUTO', 'POSITIVE', 'NEGATIVE', 'ABS' (по умолчанию 'AUTO')
+    """
+    df = df.copy()  # Создаем копию чтобы не модифицировать оригинал
     df[date_column] = pd.to_datetime(df[date_column])
+
+    # АВТОМАТИЧЕСКАЯ НОРМАЛИЗАЦИЯ СПИСАНИЯ
+    arrival_column = None
+    # Пытаемся найти колонку прихода для более точной проверки
+    for col in df.columns:
+        if any(keyword in col.lower() for keyword in ['прих', 'закуп', 'поступ', 'arrival', 'purchase']):
+            arrival_column = col
+            break
+
+    if consumption_column and consumption_column in df.columns:
+        # Нормализуем списание (всегда делаем положительным)
+        df, detection = dv.normalize_consumption(
+            df, consumption_column,
+            convention=consumption_convention,
+            start_column=start_quantity_column,
+            end_column=end_quantity_column,
+            arrival_column=arrival_column
+        )
+        print(f"[INFO] Нормализация списания: {detection['recommendation']}")
+
     results = []
     unique_combinations = df.groupby([material_column, branch_column]).groups.keys()
 
@@ -67,13 +99,75 @@ def analyze_historical_data(df, date_column, branch_column, material_column, sta
             lost_profit = excess_amount * unit_cost * interest_rate / 100
         else:
             lost_profit = 0
-        
+
+        # НОВАЯ МЕТРИКА 1: Оборачиваемость в днях
+        if turnover_str != 'Нет движения' and turnover_str != 'Нет использования' and turnover_str != 'Нет запаса':
+            try:
+                turnover_val = float(turnover_str)
+                days_of_inventory = 365 / turnover_val if turnover_val > 0 else np.inf
+                days_str = f'{days_of_inventory:.0f} дней' if days_of_inventory != np.inf else 'Н/Д'
+            except:
+                days_str = 'Н/Д'
+        else:
+            days_str = 'Н/Д'
+
+        # НОВАЯ МЕТРИКА 2: Точка заказа (ROP - Reorder Point)
+        # ROP = (Среднее потребление/день × Lead Time) + Страховой запас
+        # Страховой запас = Z-score × std_deviation × sqrt(lead_time)
+        # Для 95% service level: Z = 1.65
+        daily_usage = abs(average_usage) * 12 / 365  # перевод месячного в дневное
+        if consumption_column and consumption_column in group.columns:
+            daily_std = group[consumption_column].std() / np.sqrt(30)  # Примерная дневная вариация
+        else:
+            daily_std = usage_std / np.sqrt(30)
+
+        z_score = 1.65  # 95% service level
+        safety_stock_rop = z_score * daily_std * np.sqrt(lead_time_days)
+        reorder_point = (daily_usage * lead_time_days) + safety_stock_rop
+        reorder_point_str = f'{reorder_point:.0f} единиц'
+
+        # НОВАЯ МЕТРИКА 3: Анализ дефицитов
+        # Считаем периоды с отрицательным остатком на конец
+        deficit_periods = (group[end_quantity_column] < 0).sum()
+        total_periods = len(group)
+        deficit_percentage = (deficit_periods / total_periods * 100) if total_periods > 0 else 0
+
+        # Средний размер дефицита
+        deficits = group[end_quantity_column][group[end_quantity_column] < 0]
+        avg_deficit = abs(deficits.mean()) if len(deficits) > 0 else 0
+
+        # Fill Rate (процент удовлетворенного спроса)
+        if consumption_column and consumption_column in group.columns:
+            total_demand = group[consumption_column].sum()
+            # Спрос который не удовлетворили = дефицит
+            unsatisfied_demand = abs(deficits.sum()) if len(deficits) > 0 else 0
+            fill_rate = ((total_demand - unsatisfied_demand) / total_demand * 100) if total_demand > 0 else 100
+        else:
+            # Примерный расчет если нет колонки потребления
+            fill_rate = 100 - deficit_percentage
+
+        fill_rate_str = f'{fill_rate:.1f}%'
+        deficit_str = f'{deficit_periods} из {total_periods} ({deficit_percentage:.1f}%)'
+
+        # НОВАЯ МЕТРИКА 4: Мертвый запас
+        # Материалы без движения (когда списание близко к 0)
+        if consumption_column and consumption_column in group.columns:
+            no_movement_periods = (group[consumption_column] == 0).sum()
+        else:
+            # Если нет движения: начало = конец
+            no_movement_periods = (group[start_quantity_column] == group[end_quantity_column]).sum()
+
+        dead_stock_percentage = (no_movement_periods / total_periods * 100) if total_periods > 0 else 0
+        is_dead_stock = "Да" if dead_stock_percentage > 50 else "Нет"  # >50% периодов без движения
+        dead_stock_str = f'{is_dead_stock} ({no_movement_periods}/{total_periods})'
+
         results.append({
             'Материал': material,
             'Филиал': branch,
             'Рост за период': f'{growth:.2f} раз за {months:.1f} месяцев',
             'Среднее списание': f'{average_usage:.0f} единиц в месяц',
             'Оборачиваемость': turnover_str,
+            'Оборачиваемость (дни)': days_str,  # НОВАЯ МЕТРИКА
             'Сезонность': f'{seasonality:.2f}' if not np.isnan(seasonality) else 'Н/Д',
             'Тренд': f'{trend:.2f}' if not np.isnan(trend) else 'Н/Д',
             'Признаки накопления излишков': excess_inventory,
@@ -81,7 +175,11 @@ def analyze_historical_data(df, date_column, branch_column, material_column, sta
             'XYZ-класс': get_xyz_class(coefficient_variation),
             'Коэффициент вариации спроса': f'{coefficient_variation:.2f}' if not np.isnan(coefficient_variation) else 'Н/Д',
             'Рекомендуемый уровень запаса': f'{get_recommended_stock_level(abs(average_usage), seasonality, trend):.0f} единиц',
-            'Упущенная выгода': f'{lost_profit:.2f} руб.'
+            'Точка заказа (ROP)': reorder_point_str,  # НОВАЯ МЕТРИКА
+            'Упущенная выгода': f'{lost_profit:.2f} руб.',
+            'Периоды с дефицитом': deficit_str,  # НОВАЯ МЕТРИКА
+            'Fill Rate': fill_rate_str,  # НОВАЯ МЕТРИКА
+            'Мертвый запас': dead_stock_str  # НОВАЯ МЕТРИКА
         })
     
     results_df = pd.DataFrame(results)

@@ -5,7 +5,10 @@
       "Bash(python analyze_forecast.py)",
       "Bash(python -m pytest test_historical_analysis.py -v)",
       "Bash(python -m pytest test_forecast_analysis.py -v)",
-      "Bash(python -m pytest test_historical_analysis.py test_forecast_analysis.py -v)"
+      "Bash(python -m pytest test_historical_analysis.py test_forecast_analysis.py -v)",
+      "Bash(python business_logic_review.py)",
+      "Bash(python test_new_features.py)",
+      "Bash(python test_consumption_conventions.py)"
     ],
     "deny": [],
     "ask": []
